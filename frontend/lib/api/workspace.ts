@@ -1,8 +1,8 @@
-export interface LiveHealth {
-  readonly status: "ok";
-  readonly service: "agent-studio-api";
-  readonly version: string;
-}
+import type { components } from "@/lib/api/generated/schema";
+import { createApiClient } from "@/lib/api/client";
+
+export type LiveHealth = components["schemas"]["LiveResponse"];
+export type CurrentUser = components["schemas"]["CurrentUserResponse"];
 
 export class ApiError extends Error {
   constructor(
@@ -29,19 +29,30 @@ export async function fetchLiveHealth(
   signal?: AbortSignal,
   fetcher: typeof fetch = fetch,
 ): Promise<LiveHealth> {
-  const response = await fetcher("/api/v1/health/live", {
-    headers: { Accept: "application/json" },
+  const { data, response } = await createApiClient(fetcher).GET("/api/v1/health/live", {
     signal,
   });
 
   if (!response.ok) {
     throw new ApiError(`Health check failed with HTTP ${response.status}.`, response.status);
   }
-
-  const payload: unknown = await response.json();
-  if (!isLiveHealth(payload)) {
+  if (!isLiveHealth(data)) {
     throw new ApiError("Health check returned an unexpected response.");
   }
+  return data;
+}
 
-  return payload;
+export async function fetchCurrentUser(
+  signal?: AbortSignal,
+  fetcher: typeof fetch = fetch,
+): Promise<CurrentUser> {
+  const { data, response } = await createApiClient(fetcher).GET("/api/v1/me", { signal });
+
+  if (!response.ok) {
+    throw new ApiError(`User lookup failed with HTTP ${response.status}.`, response.status);
+  }
+  if (!data) {
+    throw new ApiError("User lookup returned an unexpected response.");
+  }
+  return data;
 }

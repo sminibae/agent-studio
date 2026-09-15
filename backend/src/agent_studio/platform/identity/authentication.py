@@ -52,13 +52,24 @@ def resolve_authenticated_identity(
 def authenticate_identity(
     settings: Annotated[Settings, Depends(get_settings)],
     proxy_token: Annotated[
-        str | None, Header(alias="X-Agent-Studio-Proxy-Token")
+        str | None,
+        Header(alias="X-Agent-Studio-Proxy-Token", include_in_schema=False),
     ] = None,
-    issuer: Annotated[str | None, Header(alias="X-Agent-Studio-Auth-Issuer")] = None,
-    subject: Annotated[str | None, Header(alias="X-Agent-Studio-Auth-Subject")] = None,
-    email: Annotated[str | None, Header(alias="X-Agent-Studio-Auth-Email")] = None,
+    issuer: Annotated[
+        str | None,
+        Header(alias="X-Agent-Studio-Auth-Issuer", include_in_schema=False),
+    ] = None,
+    subject: Annotated[
+        str | None,
+        Header(alias="X-Agent-Studio-Auth-Subject", include_in_schema=False),
+    ] = None,
+    email: Annotated[
+        str | None,
+        Header(alias="X-Agent-Studio-Auth-Email", include_in_schema=False),
+    ] = None,
     display_name: Annotated[
-        str | None, Header(alias="X-Agent-Studio-Auth-Name")
+        str | None,
+        Header(alias="X-Agent-Studio-Auth-Name", include_in_schema=False),
     ] = None,
 ) -> AuthenticatedIdentity:
     return resolve_authenticated_identity(

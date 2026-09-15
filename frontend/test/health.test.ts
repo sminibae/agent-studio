@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { ApiError, fetchLiveHealth } from "@/lib/api/health";
+import { ApiError, fetchCurrentUser, fetchLiveHealth } from "@/lib/api/workspace";
 
 describe("fetchLiveHealth", () => {
   it("requests and returns a valid live-health response", async () => {
@@ -19,10 +19,9 @@ describe("fetchLiveHealth", () => {
       service: "agent-studio-api",
       version: "0.1.0",
     });
-    expect(fetcher).toHaveBeenCalledWith("/api/v1/health/live", {
-      headers: { Accept: "application/json" },
-      signal: undefined,
-    });
+    const request = fetcher.mock.calls[0]?.[0];
+    expect(request).toBeInstanceOf(Request);
+    expect(new URL((request as Request).url).pathname).toBe("/api/v1/health/live");
   });
 
   it("exposes an HTTP status when the service rejects the request", async () => {
@@ -41,5 +40,20 @@ describe("fetchLiveHealth", () => {
     await expect(fetchLiveHealth(undefined, fetcher)).rejects.toThrow(
       "Health check returned an unexpected response.",
     );
+  });
+
+  it("returns the current user from the generated API contract", async () => {
+    const user = {
+      id: "01994ef5-20f0-7000-8000-000000000001",
+      issuer: "https://development.agent-studio.local",
+      subject: "local-developer",
+      email: "developer@localhost",
+      display_name: "Local Developer",
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(JSON.stringify(user), { status: 200 }));
+
+    await expect(fetchCurrentUser(undefined, fetcher)).resolves.toEqual(user);
   });
 });

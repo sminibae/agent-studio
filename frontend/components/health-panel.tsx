@@ -2,11 +2,20 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { fetchLiveHealth, type LiveHealth } from "@/lib/api/health";
+import {
+  fetchCurrentUser,
+  fetchLiveHealth,
+  type CurrentUser,
+  type LiveHealth,
+} from "@/lib/api/workspace";
 
 type HealthState =
   | { readonly phase: "loading" }
-  | { readonly phase: "success"; readonly health: LiveHealth }
+  | {
+      readonly phase: "success";
+      readonly health: LiveHealth;
+      readonly user: CurrentUser;
+    }
   | { readonly phase: "error"; readonly message: string };
 
 function errorMessage(error: unknown): string {
@@ -25,8 +34,8 @@ export function HealthPanel() {
   useEffect(() => {
     const controller = new AbortController();
 
-    fetchLiveHealth(controller.signal)
-      .then((health) => setState({ phase: "success", health }))
+    Promise.all([fetchLiveHealth(controller.signal), fetchCurrentUser(controller.signal)])
+      .then(([health, user]) => setState({ phase: "success", health, user }))
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
           setState({ phase: "error", message: errorMessage(error) });
@@ -75,7 +84,9 @@ export function HealthPanel() {
       <div className="status-copy">
         <p className="eyebrow">API connection</p>
         <h2>Workspace is ready</h2>
-        <p className="muted">{state.health.service} is responding normally.</p>
+        <p className="muted">
+          {state.health.service} is ready for {state.user.display_name ?? state.user.email}.
+        </p>
       </div>
       <span className="version">v{state.health.version}</span>
     </section>
