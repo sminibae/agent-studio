@@ -1,5 +1,18 @@
 # 01 프로젝트 골격
 
+## 구현 결과
+
+프로젝트 골격의 범위를 완료했다. Python 3.13.15, Node.js 24.21.0, pnpm 10.33.0,
+uv 0.12.14와 PostgreSQL 18을 기준으로 lockfile과 CI를 구성했다.
+
+- FastAPI liveness/readiness, request ID, JSON 오류와 구조화 로그
+- `app_user` migration, proxy identity 경계와 UUIDv7 owner provisioning
+- Next.js shell, OpenAPI 생성 client, API/현재 사용자 상태 표시
+- `make install/check/test-integration/test-e2e`와 GitHub Actions
+
+실제 Google OIDC/OAuth2 Proxy 배포 검증은 운영 단계에 남아 있다. 다음 구현은
+Agent SDK 호환성과 Python 실행 격리 spike다.
+
 ## 목표
 
 첫 기능 구현이 프런트엔드, API, PostgreSQL을 같은 계약으로 통과할 수 있는

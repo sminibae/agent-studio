@@ -1,6 +1,8 @@
 # Data Model
 
-이 문서는 논리 스키마를 정의한다. DDL/migration은 아직 없다. [domain-model.md](domain-model.md)의 불변식과 [execution.md](execution.md)의 상태 계약을 저장 구조로 표현한다.
+이 문서는 논리 스키마를 정의한다. 프로젝트 골격에는 `app_user` 최초 migration만
+있으며 나머지 DDL은 기능 단위로 추가한다. [domain-model.md](domain-model.md)의
+불변식과 [execution.md](execution.md)의 상태 계약을 저장 구조로 표현한다.
 
 ## 공통 규칙
 
