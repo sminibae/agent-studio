@@ -4,8 +4,11 @@ version = "0.1.0"
 description = "Agent Studio API and worker"
 requires-python = ">=3.13,<3.14"
 dependencies = [
+  "alembic>=1.16",
   "fastapi>=0.116",
+  "psycopg[binary]>=3.2",
   "pydantic-settings>=2.10",
+  "sqlalchemy>=2.0",
   "uvicorn[standard]>=0.35",
 ]
 
@@ -28,6 +31,7 @@ packages = ["src/agent_studio"]
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers"
 testpaths = ["tests"]
+markers = ["integration: requires PostgreSQL or another external service"]
 
 [tool.ruff]
 line-length = 88
@@ -41,4 +45,3 @@ python_version = "3.13"
 strict = true
 files = ["src", "tests"]
 plugins = ["pydantic.mypy"]
-
