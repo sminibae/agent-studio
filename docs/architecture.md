@@ -1,154 +1,159 @@
 # Architecture
 
-이 문서는 기술 선택과 구조 규칙을 정의한다. 도메인 개념은 `docs/domain-model.md`, 실행 규칙은 `docs/execution.md`가 정본이다. 여기서는 해당 개념과 규칙을 코드에 어떻게 배치할지만 다룬다.
+제품·기술 구조와 구현 전 확인 항목은 [decisions.md](decisions.md)를 따른다.
 
----
+## 구조의 목표
 
-## 기술 스택
+프런트엔드·HTTP API·worker·PostgreSQL로 실행 가능한 서비스를 만든다. 핵심 규칙은 HTTP, ORM, 모델 SDK 없이 실행하고 테스트할 수 있어야 한다. 도메인별 변경이 다른 영역으로 무분별하게 번지지 않게 한다.
 
-### Frontend
+**구조는 modular monolith다.** 백엔드 코드는 한 애플리케이션으로 관리하고 API와 worker는 같은 코드를 사용하는 별도 프로세스로 실행한다. 모듈을 나눴다는 이유만으로 네트워크 서비스나 별도 DB를 만들지 않는다.
 
-- Next.js (App Router)
-- TypeScript
-- React
-- shadcn/ui
-- Tailwind CSS
+## 방법론을 적용하는 위치
 
-### Backend
-
-- Python
-- FastAPI
-- Pydantic v2
-- SQLAlchemy 2.x
-- Alembic
-
-### Database
-
-- PostgreSQL
-
-### 실행기
-
-MVP는 별도 워커 프로세스 하나와 PostgreSQL 기반 작업 큐로 시작한다.
-
-- 인프라를 추가하지 않고 시작하기 위해 작업 큐를 DB에 둔다. Run과 Case Run이 이미 상태를 가진 테이블이므로 `SELECT ... FOR UPDATE SKIP LOCKED`를 사용하면 필요한 작업 큐를 구현할 수 있다.
-- 워커는 FastAPI 프로세스와 분리한다. API 요청 처리와 장시간 실행을 같은 프로세스에 두면 배포와 스케일링이 함께 묶인다.
-- Celery, Temporal, Redis Queue로 교체할 가능성만을 위해 실행기를 추상 인터페이스 뒤에 두지는 않는다. 대신 **실행 규칙을 `docs/execution.md`에 기술과 무관한 형태로 정의하여** 구현을 교체할 여지를 남긴다. 구현체가 하나뿐인 단계에서는 추상 인터페이스를 미리 만들지 않는다.
-
----
-
-## Backend 레이어
-
-```
-API
- ↓
-Application / Service
- ↓
-Domain
- ↓
-Repository / Infrastructure
-```
-
-| 레이어 | 책임 | 하지 않는 것 |
+| 방법 | 이 프로젝트에서 적용하는 것 | 검증 방법 |
 | --- | --- | --- |
-| API | HTTP 입출력, 인증, 요청/응답 스키마 변환 | 비즈니스 판단, 직접 쿼리 |
-| Application / Service | 유스케이스 흐름, 트랜잭션 경계, 여러 도메인 객체 조율 | SQL 작성, HTTP 관심사 |
-| Domain | 불변식, 상태 전이, 지표 계산 등 규칙 | I/O |
-| Repository / Infrastructure | DB 접근, 모델 API 호출, 외부 시스템 | 비즈니스 판단 |
+| Clean Architecture | 바깥의 기술이 안쪽의 규칙에 의존 | import 경계 검사 |
+| Hexagonal Architecture | 실제 I/O 경계를 port로 정의하고 adapter로 연결 | DB/모델 없이 유스케이스 테스트 |
+| Domain-Driven Design | 용어, 모듈 책임, aggregate, 불변식 | 도메인 사례와 불변식 테스트 |
+| Test-Driven Development | 규칙의 실패 예시를 먼저 작성하고 작은 구현 뒤 정리 | engineering의 개발 순서와 인수 시나리오 |
 
-### 의존 방향
+여기서 port는 현재 필요한 DB·모델·도구 등과 대화하는 계약이다. 구현체가 하나여도 규칙을 I/O에서 분리할 필요가 있으면 만든다. 단순 계산 함수마다 interface를 만들거나 모든 클래스에 대응 interface를 만들지는 않는다.
 
-의존성은 위에서 아래로만 향한다. Domain은 다른 레이어를 import하지 않는다.
+이 원칙은 [Clean Architecture 원문](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)의 안쪽으로 향하는 소스 의존성과 [Hexagonal Architecture 원문](https://alistair.cockburn.us/hexagonal-architecture)의 외부 장치에서 독립된 애플리케이션을 따른다. 아래에 애플리케이션 모듈과 기술 구성을 정의한다.
 
-Domain은 I/O를 하지 않는다. 따라서 Application 레이어에서 Trace를 기록하고 모델을 호출하며, Domain에는 상태 전이 규칙처럼 외부 입출력이 필요 없는 판단만 둔다.
+## 의존 방향과 호출 방향
 
-### 레이어 배치 기준
+소스 코드의 허용 의존성:
 
-새 코드를 배치할 때는 **이 로직이 HTTP와 DB 없이도 의미가 있는지** 먼저 확인한다.
-
-- 둘 다 없어도 의미가 있다 → Domain
-- 여러 단계를 순서대로 엮는다 → Application
-- DB나 외부 시스템과 통신한다 → Infrastructure
-- HTTP 요청과 응답을 처리한다 → API
-
----
-
-## 디렉터리 구조
-
-### Backend
-
+```text
+Driving adapters (HTTP, worker) → Application → Domain
+Driven adapters (PostgreSQL, model SDK, tools) → Application ports / Domain types
+Composition root → 각 계층의 구체 구현 (객체 조립만 담당)
 ```
+
+실행 시 Application이 port를 통해 PostgreSQL adapter를 호출할 수 있다. 그렇다고 Application이 SQLAlchemy 구현을 import하는 것은 아니다.
+
+- Domain: 엔티티·값 객체·상태 판정·점수 계산. 표준 라이브러리와 같은 모듈의 도메인 타입을 사용한다.
+- Application: command/query 유스케이스, 입출력 DTO, port, 트랜잭션 범위. FastAPI·SQLAlchemy·provider SDK를 import하지 않는다.
+- Adapters: HTTP/Pydantic 변환, SQLAlchemy, 모델 SDK, 도구 연결. domain/application 계약을 구현한다.
+- Bootstrap: 환경 설정과 의존성 조립. 비즈니스 판단을 넣지 않는다.
+
+## 모듈과 저장소 구조
+
+[domain-model.md](domain-model.md)의 책임 경계를 따라 먼저 기능별 모듈을 나눈다.
+
+```text
 backend/
-  app/
-    api/              FastAPI 라우터, 요청/응답 스키마
-    application/      유스케이스 서비스
-    domain/           엔티티, 값 객체, 규칙
-    infrastructure/
-      db/             SQLAlchemy 모델, 세션, 리포지토리
-      llm/            모델 provider 클라이언트
-    worker/           실행 워커 진입점
-  migrations/         Alembic
+  src/agent_studio/
+    assets/           # Definition, Version, Setup
+      domain/
+      application/    # 유스케이스, DTO, ports
+      adapters/       # HTTP, persistence 등 필요한 것만
+    experiments/      # Experiment, Batch, Run, Case Run, Trace
+      domain/
+      application/
+      adapters/
+    evaluation/       # Evaluation 작업, Judge, 항목 결과
+      domain/
+      application/
+      adapters/
+    analytics/        # 비교 가능성, 점수, Scope
+      domain/
+      application/
+      adapters/       # 분석용 read queries
+    platform/         # DB 연결, 공통 모델 transport 등 기술 지원
+    bootstrap/        # API/worker 진입점, 설정, 의존성 조립
+  migrations/
   tests/
-```
-
-모듈은 레이어 아래에서 도메인 영역별로 나눈다. 예: `application/setups/`, `application/experiments/`, `application/analytics/`.
-
-레이어 규칙이 이 프로젝트에서 더 자주 참조되는 경계이므로, 먼저 레이어를 나눈 뒤 그 아래에서 도메인별로 모듈을 구성한다.
-
-### Frontend
-
-```
+    unit/
+    integration/
+    contract/
 frontend/
-  app/              Next.js routes
-  features/         도메인별 화면 로직
-    setups/
-    experiments/
-    analytics/
-  components/       공용 UI
-  api/              백엔드 클라이언트
-  types/            공유 타입
+  src/
+    app/              # router, providers, 앱 조립
+    features/
+      setups/
+      experiments/
+      analytics/
+    components/ui/    # 도메인을 모르는 기본 UI
+    api/generated/    # OpenAPI에서 생성하는 계약
+    api/              # transport와 오류 처리
+  tests/
+e2e/
 ```
 
-`features/` 안에서만 도메인 지식을 다룬다. `components/`는 도메인을 모른다.
+폴더는 실제 코드가 생길 때 만든다. 다른 모듈의 내부 ORM/repository를 호출하지 않는다. 다른 모듈의 공개 application 계약이나 명시적 read port를 사용한다. Analytics의 조회 adapter는 문서화된 여러 테이블을 조인할 수 있지만 다른 모듈을 수정할 수 없다.
 
----
+`shared`에 모든 모델을 모으지 않는다. 공통 기반 클래스·generic repository·도메인 이벤트 버스는 반복이 실제로 생겼을 때 필요를 판단한다. Aggregate는 테이블마다 기계적으로 만들지 않는다.
 
-## 아키텍처 규칙
+## 트랜잭션과 읽기
 
-1. **FastAPI 라우트에 비즈니스 로직을 넣지 않는다.** 라우터는 요청을 검증하여 서비스에 전달하고, 서비스가 반환한 결과를 응답으로 변환한다.
-2. **SQLAlchemy ORM 객체를 API 스키마로 직접 사용하지 않는다.** 응답은 항상 Pydantic 모델로 변환한다. ORM 객체를 그대로 반환하면 DB 스키마 변경이 의도하지 않게 API 계약까지 바꿀 수 있다.
-3. **React 컴포넌트에서 비즈니스 규칙을 다시 구현하지 않는다.** 점수 계산과 상태 유도, 비교 판정은 모두 백엔드가 담당하고 프런트엔드는 결과만 표시한다.
-4. **Domain 레이어는 I/O를 하지 않는다.**
-5. **트랜잭션 경계는 Application 레이어가 소유한다.** 리포지토리가 각자 커밋하지 않는다.
-6. **변경할 수 없는 엔티티에 UPDATE를 수행하는 코드를 작성하지 않는다.** Definition Version, Setup, Run, Case Run, Trace Event, Evaluation Result가 이에 해당한다. Run과 Case Run의 상태 전이는 예외로 두되, 상태 컬럼과 타임스탬프만 변경한다.
+- Application이 Unit of Work port를 통해 트랜잭션을 소유한다. repository는 commit하지 않는다.
+- Definition Version 발행, Setup 생성, 실행 요청 등록, 실행 결과 확정은 각자 짧은 트랜잭션이다.
+- Git 저장과 DB Version 발행은 서로 다른 저장 경계다. 일반 폴더의 원문을 commit하고 보존 참조를 만든 뒤 DB에 저장소·commit·경로를 등록한다. Git 저장소와 격리된 Python 실행기는 application port/adapter로 연결하며, Git I/O나 코드 실행 중 DB 트랜잭션을 유지하지 않는다. 동시 발행과 실패 복구는 [python-assets.md](python-assets.md)를 따른다.
+- **모델/도구 네트워크 호출을 기다리며 DB 트랜잭션을 열어 두지 않는다.** 점유·호출·결과 저장을 구분한다.
+- 실행 등록 시 Batch, Runs, Case Runs, Evaluation 작업을 함께 생성한다. 행 수 상한으로 트랜잭션 크기를 제한한다.
+- 목록·Analytics는 query port로 필요한 read DTO를 조회한다. 읽기 때문에 거대한 aggregate를 복원하지 않는다.
+- 점수/비교 정책은 Domain의 순수 함수가 담당한다. Application은 데이터 선택과 계산을 조율하고 SQL adapter는 정의된 집계 입력을 효율적으로 읽는다.
+- ORM 모델·Pydantic API 스키마·도메인 객체를 구분하되 의미 없는 동일 구조 복사 계층은 추가하지 않는다.
 
----
+## 기술 선택의 상태
 
-## API 설계 방침
+| 영역 | 첫 구현 기본안 | 이유/검증 |
+| --- | --- | --- |
+| Backend | Python, FastAPI, Pydantic, SQLAlchemy, Alembic | Python 도구와 실행/평가 중심 |
+| Frontend | TypeScript, Next.js App Router, React, shadcn/ui, Tailwind | 사용자에게 익숙한 Next.js 유지 |
+| DB | PostgreSQL | queue·FK·transaction·JSONB |
+| Agent runtime | OpenAI Agents SDK adapter | function_tool 등록, 첫 provider OpenAI; compatibility spike 필요 |
+| 작업 실행 | 별도 worker + PostgreSQL queue | 작은 초기 규모, lease/fencing 계약 포함 |
+| 개발 도구 | uv, pnpm, Makefile, Docker Compose | 골격 단계에서 실제 명령과 버전 검증 |
 
-- REST를 기본으로 한다. 리소스는 도메인 용어를 그대로 쓴다. `/agent-setups`, `/experiments`, `/runs`, `/case-runs`, `/case-runs/{id}/trace`.
-- 실행은 리소스 생성으로 표현한다. `POST /experiments/{id}/runs`는 Run을 생성한다.
-- Analytics는 리소스가 아니라 질의로 다룬다. `POST /analytics/query`가 Scope와 지표를 받아 결과를 반환한다. Scope는 세 축의 조합이어서 URL 쿼리 문자열로 명확하게 표현하기 어렵다.
-- 목록 응답은 커서 기반 페이지네이션을 쓴다. Trace Event와 Case Run은 수가 많아질 수 있다.
-- 오류 응답 형식을 하나로 고정한다. `{ "error": { "type": ..., "message": ..., "details": ... } }`.
+Next.js는 route/layout shell과 화면 구성에 사용하고 편집·폴링·분석 상호작용은 client components로 둔다. 데이터 읽기/변경은 생성 API client를 통해 동일 origin의 FastAPI `/api`로 통일한다. Server Actions에 비즈니스 API를 복제하지 않는다. 프런트는 DB에 직접 접근하지 않는다.
 
-### 실시간 진행 상황
+Server/Client component의 역할은 [Next.js 공식 문서](https://nextjs.org/docs/app/getting-started/server-and-client-components)를 따른다. 이 제품에서 SSR은 필수 조건이 아니다.
 
-실행 중인 Run의 진행 상황은 몇 초 간격으로 폴링한다. MVP에는 이 방식으로 충분하며, WebSocket이나 SSE를 사용하면 상태 관리가 복잡해진다. 폴링으로 요구사항을 충족하기 어려워지면 SSE를 검토한다.
+## API 계약 기본안
 
----
+`/api/v1` 아래 REST JSON을 사용한다. API/worker는 같은 application 유스케이스를 호출한다. 목록은 안정적인 `(created_at, id)` 커서와 `items`, `next_cursor`를 제공한다. 큰 Trace는 `after_seq`, `limit`으로 읽는다. 페이지 크기와 실행 생성 상한은 API 스키마로 공개한다.
 
-## 모델 Provider 연동
+| 요청 | 의미 | 응답 |
+| --- | --- | --- |
+| `POST /agent-setups` | 검증된 Version 참조로 스냅샷 생성 | 201 + Setup |
+| `POST /evaluation-setups` | Dataset/Golden/Rubric 정합성 검증 후 생성 | 201 + Setup |
+| `POST /experiments` | 변경 불가능한 실험 구성 생성 | 201 + Experiment |
+| `POST /experiments/{id}/execution-batches` | Repeats 전체 실행 예약 | 202 + Batch ID, Run IDs, 조회 URL |
+| `GET /execution-batches/{id}` | 실행 요청 단위 진행 조회 | 실행/평가 상태별 개수 |
+| `POST /runs/{id}/cancel` | 취소 의도 등록 | 진행 중이면 202, 이미 종료했으면 200 + 현재 상태 |
+| `GET /case-runs/{id}` | 실행 결과와 평가 상태 조회 | Case Run + Evaluation 요약 |
+| `GET /case-runs/{id}/trace` | Trace 일부 조회 | seq 순 events + next cursor |
+| `POST /analytics/query` | 명시적 실행 범위의 분석 | compatibility, coverage, metrics, exclusions |
 
-- Provider 클라이언트는 `infrastructure/llm/` 아래에 둔다.
-- Agent와 Judge는 모두 같은 클라이언트로 모델을 호출한다.
-- 토큰 사용량과 지연시간은 클라이언트 레이어에서 측정해 Trace Event에 기록한다. 측정을 호출부마다 반복하지 않는다.
-- 실행 레이어가 재시도를 담당한다. 재시도 이력을 Trace에 남겨야 하므로 Provider 클라이언트에서는 재시도하지 않는다. 구체적인 규칙은 `docs/execution.md`의 Retry 정책을 따른다.
+실행 생성은 `Idempotency-Key`를 요구한다. 키의 범위는 `(experiment_id, key)`다. 동일 키·동일 요청은 기존 Batch를 반환하고 동일 키·다른 요청은 409다. 키 비교는 canonical request hash로 한다. 실행 등록의 validation과 원자성은 [execution.md](execution.md)를 따른다.
 
----
+오류는 `{ "error": { "type": "...", "message": "...", "details": {}, "request_id": "..." } }`로 통일한다. 404는 리소스 없음, 409는 충돌, 422는 잘못된 입력/불변식 위반, 503은 일시적 서비스 불가다. 내부 stack trace와 자격 증명은 HTTP 오류에 포함하지 않는다.
 
-## 열린 질문
+OpenAPI에서 TypeScript 타입/클라이언트를 생성하는 것을 기본안으로 삼는다. CI에서 생성물 drift를 검사한다. 프런트는 임의의 string 상태나 수동 복제한 API 타입을 유지하지 않는다.
 
-- **Next.js 렌더링 전략.** App Router에서 서버 컴포넌트를 어디까지 쓸지 정해지지 않았다. Analytics처럼 상호작용이 많은 화면은 클라이언트 컴포넌트가 자연스럽다.
-- **백엔드와 프런트엔드의 타입 공유.** OpenAPI 스키마에서 TypeScript 타입을 생성할지, 수동으로 유지할지 정해지지 않았다. 생성 쪽이 유리해 보이지만 빌드 파이프라인이 하나 늘어난다.
-- **워커 배포 형태.** 단일 프로세스로 시작하지만 여러 워커를 띄울 때의 작업 분배와 하트비트 구현이 남아 있다.
-- **모노레포 도구.** `backend/`와 `frontend/`를 한 저장소에 두되 workspace 도구를 쓸지는 정해지지 않았다.
+## 비동기 실행과 진행 표시
+
+- 폴링 기본안: 활성 화면에서 약 2초 간격, 백그라운드 탭은 완화, 종료 후 정지. 오류 시 backoff.
+- agent 실행과 evaluation 진행을 따로 반환한다. Agent 완료를 평가 완료로 표시하지 않는다.
+- PostgreSQL `SKIP LOCKED`는 작업 선점에 사용한다. 실제 신뢰성은 lease·fencing·멱등 저장·복구 계약으로 보장한다.
+- [PostgreSQL SELECT 문서](https://www.postgresql.org/docs/current/sql-select.html)는 `SKIP LOCKED`가 큐 형태 소비에 사용 가능함을 설명한다. 이것만으로 외부 모델·도구 호출의 exactly-once를 보장하지 않는다.
+- API는 실행을 DB에 등록하고 응답한다. 요청 프로세스의 background task에 장시간 작업을 맡기지 않는다.
+
+## 모델·도구 경계
+
+Application 소유 port의 예는 `AgentRuntime`, Judge용 `ModelGateway`, `UnitOfWork`, `AnalysisReader`다. SDK 내부에서 끝나는 도구 왕복을 application에 중복 구현하지 않으며 registry/도구 실행 계약은 runtime adapter 안에서 연결한다. 구체 메서드는 실제 유스케이스 테스트에서 필요한 계약으로 정한다.
+
+모델 adapter는 provider 응답을 명시적인 메시지·도구 호출·사용량·오류 타입으로 변환한다. Agent와 Judge는 transport를 공유할 수 있지만 prompt 생성·결과 검증·상태 전이는 별도 책임이다. SDK 자동 retry는 끄거나 한 층으로 통합하여 실제 시도 수를 추적한다.
+
+도구 구현 참조는 이름만으로 충분하지 않다. 구현 버전·실행 대상·입출력 스키마·timeout·비밀 참조·외부 데이터 의존성을 기록할 계약이 필요하다. 개발자가 작성한 decorator 기반 Python 함수를 등록하고 첫 함수가 날씨 HTTP API를 호출한다. 구체 계약과 export 대비는 [agent-runtime.md](agent-runtime.md)에 있다.
+
+## 인증과 소유권 경계
+
+브라우저 로그인 뒤에도 모든 리소스는 사용자 개인 소유다. 첫 배포에는 한 계정만 허용한다. Application command/query에는 인증으로 결정한 owner context를 전달한다. 클라이언트가 임의 owner를 지정할 수 없다.
+
+Repository/query port는 owner 범위를 요구하며 Setup/Golden/Batch/Trace를 교차 소유자로 연결하지 않는다. worker는 Batch owner를 이어받고 analytics도 입력 Run 모두의 owner를 검증한다. DB composite FK와 실제 두 사용자 격리 테스트로 뒷받침한다.
+
+서버·인증 프록시·TLS·비밀·백업은 [operations.md](operations.md)를 따른다. API key를 Definition/Setup/Trace에 저장하지 않고 secret reference만 사용한다.

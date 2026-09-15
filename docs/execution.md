@@ -1,238 +1,163 @@
 # Execution
 
-이 문서는 Experiment를 실행하는 방식과 상태, 실패 처리, Trace 기록 규칙을 정의한다.
+이 문서는 플랫폼의 Agent 실행 계약을 정의한다. 기술 배치는 [architecture.md](architecture.md), 지표는 [analytics.md](analytics.md)를 따른다.
 
-이 문서에서는 실행 기술을 선택하지 않는다. Celery, Temporal, Redis Queue 중 어떤 기술을 사용하더라도 아래 규칙은 동일하게 적용한다. 기술 선택은 `docs/architecture.md`에서 다룬다.
+## 실행 등록
 
----
-
-## 실행 파이프라인
-
-```
-Experiment
-  ↓  실행 요청 1회 → Run N개 (N = repeats)
-Run
-  ↓  Case 범위의 Test Case마다 1개
-Case Run
-  ↓
-Agent Execution
-  ↓  실행 중 계속 append
-Trace Events
-  ↓
-Final Answer
-  ↓  Judge Model 호출
-Evaluation
-  ↓  Rubric 항목마다 1개
-Evaluation Result
+```text
+Experiment → Execution Batch → repeats개의 Run
+                                → Case마다 Case Run + Evaluation 슬롯
+Case Run: Agent 호출/도구 왕복 → Final Answer → Evaluation 대기열
+Evaluation: Judge 호출 → 전체 응답 검증 → 항목 결과 일괄 확정
 ```
 
----
+1. 인증 owner와 모든 참조의 동일 소유권, 요청 키, Experiment/Setup의 사용 가능 여부, 선택 Case의 Dataset 소속, Golden 정책, 도구/모델 구성, 실행 상한을 검증한다.
+2. `(experiment_id, idempotency_key)`와 canonical request hash로 중복을 판단한다. 같은 요청은 기존 Batch를 반환하고 다른 요청은 409다.
+3. Batch와 Run N개, 모든 Case Run과 Evaluation 슬롯을 **한 트랜잭션**으로 만든다. 참조와 Repeat 수는 이때 고정한다.
+4. commit 후 202를 반환한다. worker는 DB에 commit된 작업만 소비한다. 외부 큐와의 이중 쓰기는 없다.
 
-## Experiment 실행 과정
+동시 동일 키 요청은 DB unique constraint로 하나만 성공시키고 다른 요청은 기존 Batch를 조회한다. created_at은 실행 묶음의 식별자가 아니다.
 
-1. **검증:** Experiment의 Case 범위가 비어 있지 않은지 확인하고, Agent Setup과 Evaluation Setup이 참조하는 Definition Version이 모두 존재하는지 검사한다. 검증에 실패하면 Run을 만들지 않고 요청을 거부한다.
-2. **Run 생성:** `repeats` 수만큼 Run을 `queued` 상태로 생성한다. 모든 Run은 하나의 트랜잭션에서 생성하여 일부만 저장되는 상황을 막는다.
-3. **Case Run 생성:** 각 Run에 Case 범위의 Test Case Version마다 하나의 Case Run을 `pending` 상태로 미리 생성한다.
-4. **실행:** 워커가 `queued` 상태인 Run을 가져와 Case Run을 순차 또는 병렬로 실행한다.
-5. **평가:** Case Run이 `succeeded` 상태로 끝나면 Evaluation을 수행한다.
-6. **집계:** 모든 Case Run이 종료 상태에 도달하면 Run의 최종 상태를 확정한다.
+## 실행 정책 기본안
 
-Case Run을 미리 모두 생성하면 진행률을 정확하게 표시할 수 있다. 실행 중에 전체 개수를 다시 계산할 필요가 없으며, 실행이 중단되어도 DB만 조회하면 남은 작업을 확인할 수 있다.
+사용자 규모가 아직 지정되지 않아 다음은 작은 팀용 시작값 제안이다. 실제 provider 제한과 첫 부하 검증 후 조정한다. 값을 바꿔도 기존 Batch의 snapshot은 바꾸지 않는다.
 
----
+| 항목 | 기본안 |
+| --- | --- |
+| Case/Experiment | 1~100 |
+| Repeats | 1~10; Batch당 Case Run 최대 1,000 |
+| worker | 첫 배포 1개, 진행 중 작업 최대 4개 |
+| 동시성 | Agent와 Judge가 같은 worker 슬롯 상한을 공유; 먼저 queued된 작업 우선 |
+| max_turns | 모델 호출 10회; retry는 같은 turn의 별도 attempt |
+| Agent 전체 timeout | 120초; 호출·도구·retry 대기를 포함 |
+| 개별 모델 / 도구 / Judge timeout | 각각 60초 / 10초 / 60초, 남은 전체 제한보다 길 수 없음 |
+| 호출 retry | 최초 포함 최대 3 attempts, 1초 기반 지수 backoff+jitter, 대기 상한 10초 |
+| heartbeat / lease | 5초 / 30초; DB 시각으로 판정 |
+| 정리 종료 대기 | 10초 뒤 lease 복구에 맡김 |
 
-## Run 생성 규칙
+Agent 도구는 한 Case Run 안에서 모델이 반환한 순서대로 실행한다. Case Run끼리는 병렬 가능하다. 여러 worker·provider별 분산 rate limit은 상한 검증 후 확장한다.
 
-- 실행 요청 1회는 Run을 `repeats`개 만든다. Repeats가 3이면 Run 3개다.
-- `repeat_index`는 그 요청 안에서 1부터 매긴다. 같은 Experiment를 두 번 실행하면 `repeat_index`가 1..3인 Run이 두 벌 생긴다. 구분은 `created_at`으로 한다.
-- Run이 하나라도 존재하는 Experiment는 수정할 수 없다. 수정하려면 새 Experiment를 만든다. 실행 이력의 의미가 변하지 않게 하기 위한 규칙이다.
+## Agent 실행 계약
 
-### Repeats의 의미
+첫 예시는 OpenAI 모델과 개발자가 Python decorator로 등록한 날씨 조회 HTTP 도구다. SDK adapter와 등록 계약은 [agent-runtime.md](agent-runtime.md)를 따른다. 아래 loop 규칙은 관찰할 동작 계약이며 SDK와 별도 loop를 중복 구현하라는 뜻이 아니다.
 
-Repeats는 **같은 조건을 몇 번 반복 실행할지**를 뜻한다. 측정 대상은 Agent 출력의 비결정성이다.
+- 입력은 Test Case의 명시적 입력 메시지와 Prompt 계약의 입력이다. Python Prompt 자산을 실행 시 평가하여 `system_prompt: str`을 얻고, 누락 변수·결과 타입을 모델 호출 전에 검사한다. 원문을 발행 시 계산한 문자열로 대체하지 않는다. Case Run별 실행 단위·격리·실제 값 기록은 [python-assets.md](python-assets.md)를 따른다.
+- 매 모델 응답은 Final Answer, Tool Calls, 오류 중 하나로 해석한다. Tool Calls가 있으면 등록된 이름과 JSON schema로 인자를 검증하고 순서대로 실행한 뒤 결과를 다음 모델 호출에 넣는다.
+- 등록되지 않은 도구, 잘못된 인자, 도구 실행 실패는 오류 Trace를 남기고 해당 Case Run을 실패로 끝내는 것을 첫 정책으로 한다. 모델의 자가 수정 루프는 후속 변경으로 별도 고정한다.
+- 유효한 최종 텍스트 응답을 받으면 `succeeded`다. 빈/해석 불가능한 응답, turn 한도 초과, timeout은 각각 명시적 실패다.
+- Tool 결과를 Prompt/권한 설정 변경 명령으로 해석하지 않는다. 도구 이름·주소·권한은 Setup의 고정 계약에서 가져온다.
+- Agent 실행 코어는 메시지/도구 호출/종료 판단을 다루고 I/O는 port를 호출한다. 웹/DB 없는 동일 계약이 이후 Python export의 기반이 된다.
 
-- Repeats는 Case 단위 반복이 아니라 Run 단위 반복이다. `Run = 전체 Case를 한 번씩 실행`이라는 정의를 지키기 위해서다.
-- Analytics의 Repetition 축은 같은 Experiment에 속한 여러 Run을 가리킨다.
-- Repeats > 1이어도 Agent Setup과 Evaluation Setup은 동일하다. 달라지는 것은 모델 샘플링뿐이다.
+## 상태
 
----
-
-## Case Run 생성 규칙
-
-- Run × Test Case Version 조합마다 Case Run을 정확히 하나 생성한다. 스키마의 고유 제약 조건이 이 규칙을 강제한다.
-- 생성 시점 상태는 `pending`이며 실행 직전에 `running`으로 바꾼다.
-- 같은 Run 안의 Case Run들은 서로 독립이다. 한 Case Run의 실패가 다른 Case Run의 실행을 막지 않는다.
-- Run 단위 설정값으로 동시 실행 수를 제한한다. 처음에는 보수적인 기본값을 사용하고 모델 API의 Rate Limit에 맞춰 조정한다.
-
----
-
-## Trace Event 종류
-
-모든 이벤트는 `case_run_id`, `seq`, `event_type`, `started_at`, `duration_ms`, `payload`를 가진다. `seq`는 1부터 증가하며 기록 후 변하지 않는다.
-
-| event_type | 언제 | payload 주요 필드 |
-| --- | --- | --- |
-| `user_input` | Case Run 시작 시 1회 | `input`, `test_case_version_id` |
-| `model_call` | 모델 호출마다 | `model`, `request_messages`, `response`, `input_tokens`, `output_tokens`, `finish_reason` |
-| `agent_reasoning` | 모델이 중간 추론을 내놓을 때 | `content` |
-| `tool_call` | 도구 호출마다 | `tool_name`, `tool_version_id`, `arguments` |
-| `tool_result` | 도구 결과마다 | `tool_name`, `result`, `is_error` |
-| `final_answer` | Case Run 종료 시 1회 | `answer` |
-| `error` | 오류 발생 시 | `error_type`, `message`, `retryable`, `attempt` |
-
-규칙:
-
-- `tool_call`과 `tool_result`는 서로 대응해야 한다. 도구가 실패하더라도 `is_error: true`인 `tool_result`를 남겨 디버깅에 필요한 이벤트가 누락되지 않게 한다.
-- `error`는 Case Run을 끝내는 오류와 재시도된 오류 모두를 기록한다. 구분은 `retryable`과 `attempt`로 한다.
-- 실패로 끝난 Case Run에는 `final_answer`가 없다. UI는 이 경우를 정상적으로 표현해야 한다.
-- Trace는 append-only다. 이벤트를 수정하거나 삭제하지 않는다.
-
-START.md의 예시를 이 모델로 옮기면 다음과 같다.
-
-```
-seq 1  user_input
-seq 2  model_call        (agent reasoning 포함)
-seq 3  tool_call         search_document
-seq 4  tool_result       search_document
-seq 5  model_call
-seq 6  tool_call         get_price
-seq 7  tool_result       get_price
-seq 8  model_call
-seq 9  final_answer
-```
-
----
-
-## 상태 정의
-
-### Run 상태
+### Case Run: Agent 실행
 
 | 상태 | 의미 |
 | --- | --- |
-| `queued` | 생성되었지만 워커가 아직 가져가지 않음 |
-| `running` | 하나 이상의 Case Run이 실행 중 |
-| `completed` | 모든 Case Run이 `succeeded` |
-| `partially_failed` | 일부 성공, 일부 실패 |
-| `failed` | 모든 Case Run이 실패 |
-| `cancelled` | 사용자가 취소 |
+| pending | 아직 점유되지 않음 |
+| running | 유효한 lease로 실행 중 |
+| succeeded | Final Answer와 실행 결과 확정 |
+| failed | 명시적 오류 또는 worker 점유 상실 |
+| timed_out | Agent 전체 deadline 초과 |
+| cancelled | 사용자 취소로 미실행 또는 중단 |
 
-### Case Run 상태
+전이: `pending → running → succeeded/failed/timed_out/cancelled`, `pending → cancelled`. 터미널 상태를 다시 running으로 돌리지 않는다. worker 만료의 `running → failed`도 기록을 보존한다.
 
-| 상태 | 의미 |
-| --- | --- |
-| `pending` | 생성되었지만 아직 실행되지 않음 |
-| `running` | 실행 중 |
-| `succeeded` | Final Answer 생성 완료 |
-| `failed` | 오류로 종료 |
-| `timed_out` | Runtime Parameter의 타임아웃 초과 |
-| `cancelled` | Run 취소로 실행되지 않았거나 중단됨 |
-
-### Evaluation 상태
-
-Evaluation Result의 상태다.
+### Evaluation: 채점 작업
 
 | 상태 | 의미 |
 | --- | --- |
-| `scored` | 정상 채점 |
-| `failed` | Judge 호출 실패 |
-| `skipped` | Golden 없음 등 정책에 따라 평가 제외 |
+| pending | Agent 결과를 기다림 |
+| queued | 채점 입력이 준비됨 |
+| running | Judge 호출/검증 중 |
+| scored | 모든 Rubric 항목이 검증·저장됨 |
+| failed | 호출/검증 실패 또는 worker 점유 상실 |
+| skipped | Golden 정책 또는 Agent 실패로 채점하지 않음; reason 필수 |
+| cancelled | 사용자가 남은 채점을 취소함 |
 
----
+Agent 성공 시 `pending → queued`, Golden skip이면 `pending → skipped(missing_golden)`. Agent failed/timed_out이면 `pending → skipped(agent_not_succeeded)`, Agent cancelled이면 `pending → cancelled`로 같은 저장 트랜잭션에서 처리한다.
 
-## 상태 전이
+Judge는 `queued → running → scored/failed`로 진행한다. 취소 시 `pending/queued/running → cancelled`가 가능하다. Agent가 성공했지만 평가 실패/skip인 경우 Agent 상태는 그대로 보존한다.
 
-```
-Run:
-queued → running → completed
-queued → running → partially_failed
-queued → running → failed
-queued → cancelled
-queued → running → cancelled
+### Run: Agent 상태의 projection
 
-Case Run:
-pending → running → succeeded
-pending → running → failed
-pending → running → timed_out
-pending → cancelled
-pending → running → cancelled
-```
+Run의 `status`는 Agent 실행을 나타낸다. Case Run 전이 때 부모를 잠그고 아래 순서로 계산한다.
 
-Run 상태는 다음 규칙에 따라 Case Run의 상태에서 계산한다.
-
-```
-모든 Case Run이 종료 상태일 때:
-  succeeded 개수 == 전체        → completed
-  succeeded 개수 == 0           → failed
-  cancelled가 하나라도 있고
-    실행된 것이 없음            → cancelled
-  그 외                         → partially_failed
+```text
+nonterminal Case Run이 있음:
+  아직 어떤 Case도 시작/종료하지 않았고 취소 요청도 없음 → queued
+  그 외 → running
+모든 Case Run이 terminal:
+  취소 요청이 있고 cancelled Case가 하나 이상 → cancelled
+  모두 succeeded → completed
+  succeeded가 0 → failed
+  그 외 → partially_failed
 ```
 
-Run 상태는 저장하지만 직접 지정하지 않고 계산한 값만 사용한다. 이렇게 하면 Run 상태와 Case Run 상태가 서로 어긋나지 않는다.
+취소가 완료와 경합하여 이미 모든 Case가 성공한 경우 `completed`를 유지한다. 취소 의도(`cancel_requested_at`)와 실제 영향(`cancelled` 개수)을 따로 보존한다. 성공 뒤 실패한 Judge 때문에 Run의 Agent 상태를 failed로 바꾸지 않는다.
 
----
+Run 조회는 Evaluation 상태별 개수와 `evaluation_complete`(모두 terminal), `pipeline_complete`(Agent와 Evaluation 모두 terminal)를 별도로 제공한다. `pipeline_complete`가 true여도 미평가가 있으면 공식 품질 비교 준비 상태는 아니다.
 
-## 실패 처리
+전부 취소된 Run은 failed가 아니다. Run 상태를 worker가 임의로 지정하는 별도 ‘Run 실패’ 경로를 두지 않는다. 구성 오류는 등록 시 거부하고 호출 시 드러난 오류는 해당 Case/평가 작업에 기록한다.
 
-실패를 두 종류로 나눈다.
+## 점유, 외부 호출, 결과 확정
 
-**Case Run 실패:** 하나의 Case에서만 발생한 오류다. 모델 오류, 도구 오류, 타임아웃, 파싱 실패가 이에 해당한다. 해당 Case Run만 `failed` 상태로 바꾸고 나머지 Case Run은 계속 실행한다.
+1. 짧은 트랜잭션에서 대상 부모 Run과 작업을 공통 잠금 순서로 잠근다. 선택은 `SKIP LOCKED`를 사용하고 pending/queued 상태를 다시 확인한다.
+2. 작업을 running으로 바꾸고 `lease_token`, `lease_expires_at`, `worker_id`를 저장한다. commit한다.
+3. DB 트랜잭션 밖에서 모델·도구를 호출한다. heartbeat는 짧은 별도 트랜잭션으로 유효한 token의 lease만 연장한다.
+4. Trace append, 사용량 기록, 결과 확정은 매번 token·running 상태·만료 시각을 확인하는 조건부 변경으로 처리한다. seq 할당과 append도 그 트랜잭션에 속한다.
+5. 종료 변경과 관련 Evaluation 전이/Run projection을 한 트랜잭션에서 확정한다. 결과를 보낸 뒤 늦게 도착한 중복 완료는 결과를 덮어쓰지 않는다.
 
-**Run 실패:** 실행 자체를 계속할 수 없는 상태다. Setup 참조가 유효하지 않거나 인증이 실패한 경우, 또는 워커가 중단된 경우가 이에 해당한다. 남은 Case Run을 `cancelled` 상태로 바꾸고 Run을 `failed`로 종료한다.
+lease 만료 시 복구기는 부모/작업을 잠그고 token을 무효화한다. running Agent는 `failed(worker_lost)`, running Evaluation은 `failed(worker_lost)`로 종료한다. pending/queued 작업은 계속 처리한다. 자동으로 Agent를 처음부터 재실행하지 않는다. 사용자는 새 Batch를 실행할 수 있다.
 
-오류 분류는 `error_type`에 기록한다.
+이 정책은 외부 호출의 exactly-once를 보장하지 않는다. provider가 처리했으나 응답을 받지 못했을 수 있으며 비용도 미확인일 수 있다. DB에 같은 결과가 중복 확정되는 것을 막고, 알 수 없는 외부 결과를 사실대로 남긴다.
 
-| error_type | 재시도 | 예 |
-| --- | --- | --- |
-| `rate_limit` | 재시도 | 모델 API 429 |
-| `provider_error` | 재시도 | 5xx, 네트워크 오류 |
-| `timeout` | 재시도 안 함 | Runtime Parameter 초과 |
-| `tool_error` | 재시도 안 함 | 도구 실행 예외 |
-| `invalid_output` | 재시도 안 함 | 출력 파싱 실패 |
-| `config_error` | 재시도 안 함 | 참조 깨짐, 인증 실패 |
+## Retry
 
----
+- 429, 재시도 가능한 5xx/연결 오류에만 적용한다. provider가 준 retry 지연이 남은 deadline을 넘으면 종료한다.
+- **개별 모델 호출**을 같은 메시지로 재시도한다. Agent 전체 흐름이나 이전 도구 호출을 반복하지 않는다.
+- 인증/설정 오류, 잘못된 출력, 인자 오류, 도구 오류, 전체 deadline 초과는 재시도하지 않는다.
+- HTTP 도구 자동 retry는 첫 정책에서 하지 않는다. 부작용 없는 요청인지 보장할 계약을 도입할 때 확장한다.
+- Judge도 개별 호출에 같은 정책을 적용한다. 부분 응답은 평가 점수로 공개하지 않는다.
+- SDK retry와 application retry가 겹치지 않게 한다. 모든 attempt에 call ID와 attempt 번호를 남긴다.
 
-## Retry 정책
+## 취소와 종료
 
-- 재시도는 `rate_limit`과 `provider_error`에만 적용한다. 나머지는 즉시 실패로 확정한다.
-- 지수 백오프에 지터를 더한다. 기본값은 최대 3회, 초기 대기 1초, 배수 2다.
-- **재시도는 기존 Case Run 안에서 처리한다.** 재시도를 위해 새 Case Run을 만들면 재시도 횟수가 Repeats에 포함되어 Analytics의 반복 통계가 왜곡된다.
-- 각 재시도 시도는 `error` Trace Event로 남긴다. `attempt` 필드로 몇 번째 시도인지 구분한다.
-- Evaluation 실패도 같은 정책으로 재시도한다. 최종 실패하면 Evaluation Result를 `failed` 상태로 남긴다. Case Run 상태는 바꾸지 않는다.
+취소 단위는 Run이다. Experiment 화면의 Batch 전체 취소는 해당 Run들에 같은 취소 요청을 적용하는 UI 동작이다. 취소 요청을 여러 번 보내도 추가 효과가 없다.
 
----
+- pending Case Run과 시작 전 Evaluation은 즉시 cancelled로 전환한다.
+- running 작업은 각 호출 전후와 heartbeat에서 취소를 확인한다. 취소 이후 새 모델·도구·Judge 호출을 시작하지 않는다.
+- 실행 중 외부 요청은 가능하면 취소하되 provider의 처리/과금까지 취소됐다고 주장하지 않는다. 취소 뒤 받은 응답은 이미 종료된 결과를 덮어쓰지 않는다.
+- Agent 성공 뒤 Judge만 남아 있으면 Agent 결과는 보존하고 Evaluation을 취소한다. Run의 Agent status는 completed일 수 있다.
+- 종료한 Run이라도 Judge가 진행 중이면 pipeline 취소가 가능하다. 모든 작업이 terminal이면 현재 결과를 반환한다.
+- worker 정상 종료 시 새 선점을 멈추고 제한 시간 동안 정리한다. 강제 종료/프로세스 중단은 lease 복구와 같은 규칙을 따른다.
 
-## 취소
+## Trace와 호출 기록
 
-- 취소 대상은 Run이다. Case Run 단위 취소는 제공하지 않는다.
-- 취소 요청은 즉시 Run 상태를 `cancelled`로 바꾸지 않는다. 실행 중인 Case Run이 정리될 때까지 기다린다.
-- `pending` Case Run은 즉시 `cancelled`가 된다. `running` Case Run은 현재 모델 호출이 끝나면 중단하고 `cancelled`로 둔다.
-- 이미 끝난 Case Run의 결과는 그대로 보존한다. 취소는 기록을 지우지 않는다.
+Agent Trace는 `case_run_id`, `seq`, `event_type`, `occurred_at`, `payload_schema_version`, `payload`를 갖는다. seq는 관측·저장 순서다.
 
----
+| event_type | 주요 내용 |
+| --- | --- |
+| user_input | 입력, Case Version; 실제 시작 때 1회 |
+| model_call_started / model_call_finished | call_id, attempt, 요청/응답, 공개 사용량, duration, provider request ID |
+| model_output | provider가 공개한 중간 텍스트/요약; 내부 추론 수집을 전제하지 않음 |
+| tool_call / tool_result | call_id, tool Version/구현 참조, 인자/결과, is_error |
+| final_answer | 최종 답변; 성공 때 1회 |
+| error | 분류, 원인, retry 여부, call_id/attempt |
+| execution_cancelled / execution_interrupted | 사용자 취소 또는 worker 상실 |
 
-## 부분 실패
+`tool_result.call_id`는 해당 `tool_call`을 연결한다. 프로세스가 죽으면 결과 이벤트가 없을 수 있다. 복구기가 가짜 도구 응답을 만들지 않고 interruption을 남긴다. UI는 열린 호출과 누락 결과를 표시한다.
 
-Partial Failure는 시스템 오류가 아니라 실행 과정에서 발생할 수 있는 결과다.
+Judge의 요청/응답/attempt는 Evaluation에 연결된 호출 기록으로 저장한다. 채점 근거는 모델이 반환한 사용자 표시용 설명이다. 내부 chain of thought를 요구하지 않는다.
 
-- `partially_failed` 상태인 Run도 Analytics에 포함한다. 제외하면 실패가 많은 Setup의 결과가 실제보다 좋아 보일 수 있다.
-- 지표를 계산할 때 분모를 명확히 한다. Pass Rate의 분모는 성공한 Case Run이 아니라 전체 Case Run이다. 자세한 정의는 `docs/analytics.md`에 있다.
-- UI는 Run의 성공·실패 개수를 상태 옆에 항상 같이 보여준다.
+호출 기록에는 provider/model 요청값·응답 model ID(제공될 때), 구현 버전, 타임스탬프, 오류, 사용량, 가격 근거와 계산된 비용을 남긴다. Agent/Judge 비용을 나누고 retries의 확인된 비용도 포함한다. 알 수 없는 사용량/가격은 null과 coverage로 표현한다. 현재 단가로 과거 비용을 다시 쓰지 않는다.
 
----
+Trace/도구 결과의 크기 상한은 [agent-runtime.md](agent-runtime.md)의 날씨 도구/Trace 기본안을 따른다. 초과 원문을 무한 저장하지 않으며 잘림/저장 누락 여부와 원래 크기(알 때)를 표시한다. 비밀 값·인증 헤더는 저장 대상에서 제외한다.
 
-## 멱등성과 재실행
+## 재현성의 범위
 
-- 실행 요청은 클라이언트가 보낸 요청 키로 멱등 처리한다. 같은 키로 두 번 요청해도 Run이 두 벌 생기지 않는다.
-- 워커가 중단되어 `running` 상태로 남은 Run은 하트비트 타임아웃이 지나면 회수한다. 회수한 Run에서 `running` 상태였던 Case Run을 `failed`로 바꾸고 Run 상태를 다시 계산한다.
-- 이미 끝난 Run은 재실행하지 않는다. 다시 실행하려면 같은 Experiment를 다시 실행해 새 Run을 만든다. 기존 Run을 덮어쓰면 이력이 사라진다.
+저장할 것은 선택된 Version, 실행 코어/도구 구현 버전, 실행 정책, 실제 호출과 사용량, 외부 응답이다. Repeats는 이 조건 아래의 관측 변동을 측정한다. Judge와 외부 날씨 데이터도 달라질 수 있어 Agent sampling만의 분산이라고 해석하지 않는다.
 
----
+Python 자산은 같은 원문에서도 실행 시각 등에 따라 다른 값을 만든다. 실제 생성된 Prompt/평가 설정도 기록하며 같은 Version을 같은 최종 문자열로 취급하지 않는다. Git 저장소·commit·파일 누락, 원문 hash 불일치, 코드 실행·결과 검증 실패는 모델/Judge 호출 전에 해당 작업의 명시적 오류로 남긴다.
 
-## 열린 질문
-
-- **Case Run 병렬 실행 수준.** 지금은 Run 안에서 Case Run을 병렬 실행하고 동시 실행 수를 제한한다. Run 자체를 병렬로 돌릴지, 모델별 rate limit을 어디서 관리할지는 정해지지 않았다.
-- **Evaluation을 Case Run 직후에 할 것인가, Run 종료 후 일괄로 할 것인가.** 지금은 Case Run 직후다. 결과를 빨리 볼 수 있지만 Judge 호출이 Agent 실행과 rate limit을 나눠 쓴다.
-- **재평가 기능.** 같은 Case Run을 다른 Evaluation Setup으로 다시 채점하는 기능은 도메인상 가능하지만 MVP 범위에 넣지 않았다. 넣는다면 Evaluation Result에 `evaluation_setup_id`를 추가해야 한다.
-- **하트비트 타임아웃 값.** 워커 구현을 고른 뒤 정한다.
+첫 인수 테스트는 고정 날씨 응답을 사용하고 live smoke는 실제 응답과 조회 시각을 저장한다. 역사적 조건의 조회·검산과 동일 출력 재생산을 구분한다.

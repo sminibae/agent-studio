@@ -1,190 +1,84 @@
 # Product
 
-이 문서는 제품의 목적과 범위를 정의한다. 용어의 정확한 의미는 `docs/domain-model.md`가 정본이다.
+제품 구상의 원문은 [START.md](START.md), 설계 요약과 미정 항목은 [decisions.md](decisions.md)다. 이 문서는 구현된 기능 목록이 아닌 첫 서비스의 목표와 범위다.
 
----
+## 목적
 
-## 제품 목적
+**Agent를 측정 근거로 개선한다.** Prompt·Model·Tool을 바꾼 뒤 같은 평가 조건으로 실행하고, 평균뿐 아니라 Case별 퇴행·실패·반복 변동과 Trace를 확인할 수 있게 한다.
 
-**Agent를 감이 아니라 측정으로 개선할 수 있게 한다.**
+사용자는 서버에 접속하는 개발자 본인과 소수 팀원이다. 플랫폼 안에서 Agent를 조합하고 직접 실행한다. 개발자는 Python 함수로 도구를 제공하고 화면에서 자산·Setup·실험을 관리한다. 첫 모델 provider는 OpenAI다. 데이터는 사용자별로 분리하고 첫 배포에는 한 사용자만 허용한다.
 
-Agent를 개발하다 보면 프롬프트를 수정하고 몇 차례 실행한 뒤, 결과가 좋아진 것 같다는 인상만으로 변경 사항을 판단하기 쉽다. 이 제품은 그 과정의 각 단계를 기록할 수 있는 자산과 재현 가능한 실행으로 바꾼다. 무엇을 바꿨고 그 결과 어떤 부분이 개선되거나 악화되었는지 언제든 확인할 수 있게 하는 것이 목적이다.
+자산 내용은 Python 코드 편집기로 작성하고 화면 상단에 결과 변수·타입을 안내한다. 원문을 서버의 일반 폴더에 저장하고 Git으로 형상관리하며, 실제 Agent 실행 시 값을 계산한다. 사용자 경험과 미결 실행 계약은 [python-assets.md](python-assets.md)를 따른다.
 
----
+향후 목표는 만든 Agent를 `.py`로 export하는 것이다. 첫 버전에 export 화면/코드 생성기를 구현하지 않되, 실행 코어와 설정·도구 계약을 웹/DB에서 분리한다. 외부 Agent의 Trace를 받아 평가하는 수집 플랫폼은 현재 첫 목표가 아니다.
 
-## 대상 사용자
+## 첫 사용자 사례
 
-주요 사용자는 **Agent를 직접 개발하고 수정하는 개발자**다. 이 사용자는 실험을 설계하고 Trace를 읽는다.
+날씨 조회 HTTP API를 사용하는 Agent로 한 사이클을 완주한다.
 
-이 사용자는 다음을 전제한다.
+1. 개발자가 날씨 조회 Python 함수를 등록하고 배포한다. 함수는 명시적인 타입과 설명, HTTP timeout과 출력 계약을 가진다.
+2. 사용자가 Agent Prompt·OpenAI 모델·날씨 도구로 Agent Setup A를 만든다.
+3. Test Case, Dataset, Golden, Judge Prompt/Model, Rubric, Scoring Rule로 Evaluation Setup을 만든다.
+4. A의 Experiment를 생성하고 반복 실행한다. 진행과 Agent Trace·평가 결과를 확인한다.
+5. A를 복제해 Prompt 또는 Tool Description을 바꾼 B를 만들고 같은 조건으로 실행한다.
+6. A/B의 품질·실패·비용을 비교하고, 퇴행 Case의 두 Trace와 Judge 근거를 확인한다.
 
-- 프롬프트, 도구 스키마, 모델 파라미터를 직접 다룬다.
-- JSON과 스택 트레이스를 익숙하게 읽는다.
-- 요약된 대시보드보다 원본 데이터에 접근하는 것을 선호한다.
-- 화면이 예쁜 것보다 정보 밀도가 높은 것을 선호한다.
+실시간 날씨의 숫자를 고정 정답으로 저장하지 않는다. live 평가의 Golden은 ‘도구가 반환한 지역·시각·단위·수치를 왜곡하지 않는다’처럼 기준을 담고 Judge에게 실제 도구 결과를 제공한다. 자동 인수 테스트에는 고정 날씨 응답을 쓴다.
 
-이 전제는 UI 설계에 직접 영향을 준다. 자세한 내용은 `docs/ui-ux.md`에 있다.
+## 첫 완성본 범위
 
-비개발 직군의 품질 검수자와 경영 보고용 지표를 확인하는 사람은 현재 대상 사용자가 아니다. 이들을 위한 요약 화면도 지금은 만들지 않는다.
-
----
-
-## 핵심 문제
-
-### 1. 무엇을 바꿨는지 남지 않는다
-
-프롬프트를 고치고 돌려보면 이전 버전이 사라진다. 좋아졌다고 생각했는데 어제 버전이 더 나았다는 것을 알았을 때 되돌아갈 방법이 없다.
-
-→ Definition의 버전을 관리하고, Setup을 변경할 수 없는 스냅샷으로 고정한다.
-
-### 2. 좋아졌다는 판단에 근거가 없다
-
-예시 몇 개만 실행한 결과로 품질을 판단하면 그 예시가 대표성을 갖는지, 결과가 우연히 잘 나온 것인지 알 수 없다.
-
-→ Dataset과 Rubric으로 평가를 고정하고, 여러 Case에 대해 점수를 낸다.
-
-### 3. 같은 입력에 매번 다른 결과가 나온다
-
-LLM은 비결정적이다. 한 번 잘 나온 결과가 항상 잘 나오는 것은 아니다.
-
-→ Repeats로 같은 조건을 반복 실행하고 분산을 측정한다.
-
-### 4. 왜 그렇게 답했는지 알 수 없다
-
-최종 답변만 보면 도구를 잘못 골랐는지, 도구 결과가 잘못됐는지, 종합을 잘못했는지 구분할 수 없다.
-
-→ 모든 실행의 Trace를 이벤트 단위로 기록하고 끝까지 펼쳐 본다.
-
-### 5. 평균은 올랐는데 무언가 망가진다
-
-전체 점수가 올라도 특정 Case가 퇴행했을 수 있다. 평균만 보면 이것을 놓친다.
-
-→ Regression을 Case 단위로 식별하고 목록으로 제공한다.
-
----
-
-## 최상단 정보 구조
-
-```
-Setups                Experiments                 Analytics
-├─ Agent Setups       ├─ Experiments              ├─ Scope
-└─ Evaluation Setups  ├─ Runs                     ├─ Overview
-                      └─ Traces                   ├─ Setups
-                                                   ├─ Cases
-                                                   ├─ Traces
-                                                   └─ Metrics
-```
-
-세 영역의 역할은 서로 겹치지 않는다.
-
-| 영역 | 역할 | 다루는 대상 |
-| --- | --- | --- |
-| Setups | 무엇을 어떻게 평가할지 정의한다 | Definition, Agent Setup, Evaluation Setup |
-| Experiments | 실행하고 결과를 확인한다 | Experiment, Run, Case Run, Trace |
-| Analytics | 여러 실행을 비교하고 해석한다 | Analysis, Comparison |
-
-Experiments와 Analytics는 모두 Trace를 보여주지만 진입 경로가 다르다. Experiments의 Trace는 "이 Run에서 무슨 일이 있었는가"에 답하고, Analytics의 Trace는 "이 비교에서 어떤 실행이 차이를 만들었는가"에 답한다. 두 화면은 같은 컴포넌트를 사용하지만 서로 다른 맥락을 제공한다.
-
-### Setups
-
-Definition과 Setup을 관리한다.
-
-- Agent Setups: Agent Prompt, Model, Tool Set, Tool Descriptions, Agent Runtime Parameters
-- Evaluation Setups: Dataset, Golden Set, Judge Prompt, Judge Model, Rubric, 점수 합산 방식인 Scoring Rule
-
-각 탭에서는 Setup의 목록과 상세 정보를 확인하고, 새 Setup을 만들거나 기존 Setup을 복제하고 삭제할 수 있다. Setup은 생성 후 변경되지 않으므로, 기존 Setup을 "수정"할 때는 복제본으로 새 Setup을 만든다. UI에서도 이 동작을 분명히 안내한다.
-
-### Experiments
-
-- Experiments: Agent Setup과 Evaluation Setup, Case 범위, Repeats를 선택하여 실험을 정의하고 실행한다.
-- Runs: 실행 이력과 Run별 상태 및 결과를 확인한다. 각 Run에 포함된 Case Run도 조회할 수 있다.
-- Traces: 분할 화면의 왼쪽에는 Case Run 목록을, 오른쪽에는 선택한 Trace의 상세 정보를 표시한다.
-
-### Analytics
-
-Agent Setup × Case × Repetition 8가지 Scope에 따라 분석 성격이 달라진다. 자세한 내용은 `docs/analytics.md`에 있다.
-
----
-
-## 전체 사용자 흐름
-
-```
-Setup      Agent Setup을 만든다
-  ↓
-Evaluate   Dataset과 Evaluation Setup으로 Experiment를 실행한다
-  ↓
-Analyze    성능 / 안정성 / 실패를 확인한다
-  ↓
-Debug      Case → Trace까지 내려간다
-  ↓
-Compare    이전 Setup과 새 Setup을 비교한다
-  ↓
-Improve    Prompt / Model / Tool / Runtime Definition을 수정한다
-  ↓
-New Agent Setup Snapshot   (다시 Evaluate로)
-```
-
-제품의 모든 기능은 이 흐름을 지원해야 한다. 기능을 추가할지는 **사용자가 이 흐름을 한 차례 완료하는 데 도움이 되는지**를 기준으로 판단한다.
-
-이 흐름에서 `Improve → New Setup → Evaluate` 구간이 가장 자주 반복된다. 따라서 기존 Setup을 복제하고 한 항목만 바꾼 새 Setup을 몇 차례의 클릭만으로 만들 수 있어야 한다.
-
----
-
-## MVP 범위
-
-루프를 한 바퀴 완주할 수 있는 최소 기능만 넣는다.
-
-### Setups
-
-- Definition 생성·수정·목록·버전 이력 조회 (Prompt, Tool, Model Config, Test Case, Dataset, Golden, Golden Set, Rubric, Scoring Rule)
-- Agent Setup 생성·목록·상세·복제
-- Evaluation Setup 생성·목록·상세·복제
-
-### Experiments
-
-- Experiment 생성·목록·상세
-- Case 범위 선택, Repeats 지정
-- 실행, 진행 상황 확인, 취소
-- Run 목록과 상세, Case Run 목록
-- Trace 상세 조회 (분할 화면, 이벤트 시퀀스, Step별 Input/Output/Latency/Token/Model/Tool Arguments/Tool Result/Error)
-
-### Evaluation
-
-- LLM Judge 기반 Rubric 채점
-- Scoring Rule에 따른 점수 합산
-- Evaluation Result 조회
-
-### Analytics
-
-- 8가지 Scope 선택
-- Overview, Setups, Cases, Traces, Metrics 탭
-- `docs/analytics.md`에 정의된 지표
-
-MVP는 기능 개수가 아니라 완결된 사용자 흐름을 기준으로 판단한다. **한 사용자가 Agent Setup 두 개를 만들고 같은 Evaluation Setup으로 비교한 뒤, 퇴행한 Case를 찾아 해당 Trace까지 확인할 수 있으면** MVP가 완성된 것이다.
-
----
-
-## MVP에서 하지 않을 것
-
-아래는 필요할 수 있지만 지금 만들지 않는다. 각각 왜 미루는지를 함께 적는다.
-
-| 항목 | 미루는 이유 |
+| 영역 | 제공할 동작 |
 | --- | --- |
-| 계정, 인증, 권한 | 단일 팀 사용을 전제한다. 나중에 추가해도 스키마 변경이 크지 않다 |
-| 코드 기반 Evaluator (정확 일치, 정규식, 함수 실행) | LLM Judge 하나로 루프를 완주할 수 있다. Evaluator 추상화는 두 번째 구현이 생길 때 만든다 |
-| 재평가 (같은 Case Run을 다른 Evaluation Setup으로 재채점) | 도메인상 가능하지만 루프 완주에 필요하지 않다 |
-| Prompt 자동 최적화, 자동 개선 제안 | 먼저 신뢰할 수 있는 측정 체계를 마련해야 한다 |
-| Dataset 자동 생성, 합성 데이터 | 평가 데이터의 신뢰성이 제품의 근거다. 자동 생성은 그 근거를 약화시킨다 |
-| 외부 시스템 연동 (CI, Slack, Webhook) | 먼저 사용자가 화면에서 전체 흐름을 완료할 수 있어야 한다 |
-| 실시간 협업, 코멘트 | 먼저 단일 사용자 흐름을 완성해야 한다 |
-| Trace 비교의 자동 diff | Trace를 나란히 놓는 것까지만 한다. 자동 차이 탐지는 Trace 구조가 안정된 뒤에 |
-| 다중 Agent, Agent 간 호출 | 단일 Agent 실행 모델을 먼저 고정한다 |
-| 비용 예산, 쿼터 관리 | 비용을 측정하고 표시하는 것까지만 한다 |
+| 접근 | 브라우저 로그인, 허용된 팀원만 서버 접근; 개인 데이터 격리, 첫 배포 계정 1명 |
+| 자산 | Definition 종류별 생성·새 Version 발행·이력 조회·보관, Dataset Case 편집 |
+| Agent Setup | Prompt/Model/등록 Tool/Runtime 선택, 생성·목록·상세·복제·보관 |
+| Evaluation Setup | Dataset/Golden/Judge/Rubric/Scoring 구성, 정합성 검증·복제·보관 |
+| Experiment | 고정 구성 생성·복제, Case 범위와 Repeats 선택 |
+| 실행 | 멱등 Batch 생성, Run/Case 진행, 취소, worker 중단 복구 |
+| Trace | Agent 입력/모델/도구/최종 답변, 실패한 열린 호출, Judge 호출·근거 조회 |
+| 분석 | 8 Scope의 기본 조회, 같은 평가 조건의 A/B 비교, Case 퇴행과 반복 변동 |
+| 운영 | 서비스 기동, migration, 로그, 접근 차단 검증, backup/restore, live smoke |
 
----
+‘MVP니까 화면만’ 또는 ‘실행만 되면 됨’으로 완료 기준을 줄이지 않는다. 구현은 작은 수직 기능으로 나누지만 첫 서비스는 위 흐름을 실제 웹·API·worker·DB에서 완주해야 한다.
 
-## 열린 질문
+Definition은 독립 자산/Version으로 재사용한다. 첫 버전은 8 Scope와 정해진 지표·축 선택, 정의·분모·분포 확인을 제공한다. 자유 수식/SQL 엔진은 범위에 추가하지 않는다.
 
-- **Agent를 어디에서 실행할 것인가.** 현재는 이 플랫폼이 Agent를 직접 실행한다고 전제한다. 사용자가 자신의 시스템에서 Agent를 실행하고 결과만 전송하는 방식까지 지원할지는 정해지지 않았다. 이 방식을 지원한다면 Trace 수집 API가 제품의 중심 기능이 된다.
-- **도구 실행 방식.** Tool Definition이 스키마만 가질지, 실제 실행 가능한 구현까지 가질지 정해지지 않았다. 후자라면 샌드박스와 보안이 큰 주제가 된다.
-- **Dataset의 규모.** Case 수십 개를 전제하는지 수천 개를 전제하는지에 따라 실행기와 Analytics 설계가 달라진다.
+## 내비게이션
+
+```text
+Setups                   Experiments                   Analytics
+├─ Agent Setups          ├─ Experiments                ├─ Scope
+└─ Evaluation Setups     ├─ Runs                       ├─ Overview
+                        └─ Traces                     ├─ Setups
+                                                      ├─ Cases
+                                                      ├─ Traces
+                                                      └─ Metrics
+```
+
+Definition 편집은 Setups 내부의 자산 관리 진입점과 Setup 구성 화면에서 접근한다. 실행 요청 묶음은 Experiment 상세의 실행 이력에 표시한다. Batch/Evaluation 내부 개념마다 최상위 탭을 추가하지 않는다.
+
+Experiments의 Trace는 실행 하나를 설명하고 Analytics의 Trace는 선택한 비교 범위의 차이를 설명한다. 같은 viewer를 사용하고 탐색 맥락만 다르게 제공한다.
+
+## 후속 범위
+
+| 항목 | 첫 단계의 대비 |
+| --- | --- |
+| Python export | serializable Setup manifest, 명시적 도구 artifact, 웹/DB 독립 실행 계약 |
+| 다른 model provider | provider SDK를 adapter 안에 유지, capability 검증 |
+| 재평가 | Evaluation 작업과 Result 분리; 실제 재평가 저장/선택 계약은 기능 도입 때 확장 |
+| 외부 Agent 수집, 다중 Agent | 현재 런타임과 제품 모델을 불필요하게 일반화하지 않음 |
+| 코드 Evaluator | Judge 응답 검증과 scoring 순수 함수는 지금 구현, 평가 방식 확장은 실제 필요 때 |
+| 자유 Metrics 탐색·통계 검정 | 고정 지표의 계약과 표본 수를 먼저 신뢰 가능하게 구현 |
+| 자동 Prompt 최적화·Dataset 생성 | 수동 개선 루프가 안정된 뒤 판단 |
+| CI/Slack 연동·댓글·세밀한 권한 | 개인 사용 흐름 완성 후 필요 확인 |
+| 비용 예산·쿼터 UI | 첫 버전은 사용량·비용 및 실행 상한을 제공 |
+
+## 제품 품질 기준
+
+- 원본 입력·구성·Trace·평가 근거로 요약 수치를 추적할 수 있다.
+- 실패/미평가/취소/진행 중을 구분하고 숫자의 분모를 표시한다.
+- 화면의 시각적 완성도와 정보 밀도를 함께 챙긴다. 개발자 도구라는 이유로 읽기 어려운 UI를 정당화하지 않는다.
+- 기본 동작은 명확한 버튼·빈 상태·오류 안내로 수행할 수 있고, 구현 내부 ID를 외워야 하지 않는다.
+- 서버 서비스의 접근 제한, 데이터 영속성, 복구 가능성을 완성의 일부로 본다.
+
+첫 인수 시나리오와 구현 순서는 [engineering.md](engineering.md), 도구/런타임은 [agent-runtime.md](agent-runtime.md), 배포 기본안은 [operations.md](operations.md)에 있다.
