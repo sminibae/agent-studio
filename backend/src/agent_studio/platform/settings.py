@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     )
 
     environment: Literal["development", "test", "production"] = "development"
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     database_url: str = (
         "postgresql+psycopg://agent_studio:agent_studio@localhost:5432/agent_studio"
     )

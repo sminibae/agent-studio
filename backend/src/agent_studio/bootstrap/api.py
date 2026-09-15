@@ -5,6 +5,8 @@ from agent_studio.platform.health.http import router as health_router
 from agent_studio.platform.http.errors import install_error_handlers
 from agent_studio.platform.http.request_id import RequestIdMiddleware
 from agent_studio.platform.identity.http import router as identity_router
+from agent_studio.platform.observability import configure_logging
+from agent_studio.platform.settings import get_settings
 
 
 def create_app() -> FastAPI:
@@ -22,3 +24,4 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+configure_logging(get_settings().log_level)
