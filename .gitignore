@@ -1,1 +1,12 @@
 .claude
+.DS_Store
+.env
+.venv/
+.uv-python/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.next/
+node_modules/
+coverage/
