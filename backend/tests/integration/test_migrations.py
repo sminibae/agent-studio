@@ -1,14 +1,13 @@
-import os
-
 import pytest
 from sqlalchemy import create_engine, inspect, text
+
+from agent_studio.platform.settings import get_settings
 
 pytestmark = pytest.mark.integration
 
 
 def test_app_user_migration_has_identity_constraint() -> None:
-    database_url = os.environ["AGENT_STUDIO_DATABASE_URL"]
-    engine = create_engine(database_url)
+    engine = create_engine(get_settings().database_url)
 
     with engine.connect() as connection:
         columns = {

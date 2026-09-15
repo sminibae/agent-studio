@@ -8,7 +8,7 @@
     "start": "next start",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "generate:api": "openapi-typescript openapi.json -o lib/api/generated/schema.ts",
+    "generate:api": "openapi-typescript openapi.json -o lib/api/generated/schema.ts && prettier --write openapi.json lib/api/generated/schema.ts",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
