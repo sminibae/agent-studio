@@ -252,6 +252,31 @@ Run의 Experiment는 Batch를 통해 조회한다. 같은 의미의 experiment_i
 
 점유·완료·취소·복구는 부모 Run → Case Run 또는 Evaluation 순으로 잠근다. 동시에 마지막 두 Case가 완료될 때 부모 projection이 stale하지 않도록 공통 잠금 순서를 사용한다. 외부 호출 동안 lock을 유지하지 않는다.
 
+## 대기열·실행 예약
+
+```text
+scheduler_state
+  id PK = 1, next_claim_sequence
+
+scheduler_owner_state
+  owner_id FK PK, last_claim_sequence nullable
+
+runtime_reservation
+  id, owner_id FK
+  case_run_id FK nullable, evaluation_id FK nullable  # 정확히 하나
+  lease_token, worker_id, lease_expires_at
+  status, container_id nullable
+  created_at, released_at nullable
+```
+
+미반환 예약은 작업이 terminal이어도 실제 컨테이너 정리 확인 전에는 슬롯을
+차지한다. 같은 작업에 미반환 예약은 하나만 허용하는 partial unique index를
+둔다. 예약의 owner는 작업의 Batch owner와 같아야 하며 application과 DB
+constraint로 검증한다. `scheduler_state`를 등록·점유 트랜잭션에서 먼저 잠가
+미종료 작업/실행 슬롯 상한과 owner 순서를 직렬화한다. 그 다음 부모 Run → 작업
+잠금 순서를 지킨다. 예약 정리·lease fencing은 [scheduling.md](scheduling.md)와
+[execution.md](execution.md)를 따른다.
+
 ## Trace와 모델 호출 기록
 
 Python 자산의 실제 결과는 Case Run 또는 Evaluation에 연결한 실행 기록으로 보존한다. 자산 Version·저장소·commit·경로·원문 SHA-256, 실행 환경·실제 값·오류를 모델/Judge 호출 전에 기록한다. 상세 결과 테이블의 미정 항목은 [python-assets.md](python-assets.md)를 따른다. 함수·모듈 객체를 직렬화하지 않는다.
@@ -333,6 +358,8 @@ case_run(created_at, id) WHERE status = pending
 case_run(lease_expires_at) WHERE status = running
 evaluation(status, created_at, id)
 evaluation(lease_expires_at) WHERE status = running
+runtime_reservation(owner_id) WHERE released_at IS NULL
+runtime_reservation(lease_expires_at) WHERE released_at IS NULL
 trace_event(case_run_id, seq)           # UNIQUE index 재사용
 ```
 

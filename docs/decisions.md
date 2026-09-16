@@ -28,8 +28,8 @@
 | SDK | OpenAI Agents SDK를 AgentRuntime adapter로 사용 | 도구 설명 격리, retry·Trace·취소 계약의 compatibility spike |
 | 배포 | 서버 1대, Compose + Caddy + OAuth2 Proxy, Google OIDC 후보 | 실제 계정 로그인, 접근 격리, 서비스 기동·복구 |
 | 채점 | LLM Judge + 정규화 가중 평균 | 응답 검증, 실패/미평가 구분, 점수 검산 |
-| 실행량 | 100 Cases × 10 Repeats, worker 동시 작업 4개 | 실제 provider 제한, 부하와 저장 용량 |
-| 작업 대기열 | PostgreSQL 기반 선점과 lease | 동시 점유, heartbeat, worker 중단과 늦은 쓰기 차단 |
+| 실행량 | 100 Cases × 10 Repeats, 전체 4개·owner별 2개 실행 예약 | 실제 provider 제한, 호스트 자원·부하와 저장 용량 |
+| 작업 대기열 | PostgreSQL 기반 owner 순환 점유와 lease·컨테이너 예약 | 동시 점유, 공정성, heartbeat, worker 중단·정리와 늦은 쓰기 차단; [scheduling.md](scheduling.md) |
 
 ## 구현 전 확인 항목
 
