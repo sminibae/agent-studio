@@ -49,7 +49,7 @@ typed decorator에서 숫자 schema가 생성되고, 동시에 실행한 두 Age
 | 2. Description 동시 격리 | fake model에서 통과 |
 | 3. unknown/invalid/exception/turn | SDK 오류 동작과 명시적 실패 설정 통과; 제품 상태·Trace 변환 미검증 |
 | 4. retry/parallel/attempt/usage | runner retry 정책·시도 수, parallel 설정 전달, 성공 응답 usage hook 관찰; 실제 병렬성·실패 attempt 영속 기록 미검증 |
-| 5. 취소/deadline/heartbeat | 미검증 |
+| 5. 취소/deadline/heartbeat | async 도구 중 취소 후 새 모델 호출 없음·event loop heartbeat 통과; deadline·블로킹 sync 도구 미검증 |
 | 6. 외부 tracing OFF와 로컬 DB Trace | tracing OFF에서도 로컬 hooks의 모델 사용량·도구 이벤트 통과; 영속 DB Trace 미검증 |
 | 7. 웹/DB 없는 날씨 harness | fake weather 함수 호출 통과; HTTP adapter 미검증 |
 

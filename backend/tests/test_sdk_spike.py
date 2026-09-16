@@ -199,6 +199,49 @@ def test_runner_retry_is_explicit_and_counts_model_attempts() -> None:
     assert asyncio.run(run(1)) == ("recovered", 2)
 
 
+def test_cancelled_async_tool_allows_heartbeat_and_no_second_model_call() -> None:
+    async def run() -> None:
+        entered = asyncio.Event()
+        heartbeat = 0
+
+        async def slow_tool() -> str:
+            entered.set()
+            await asyncio.sleep(10)
+            return "late"
+
+        async def tick() -> None:
+            nonlocal heartbeat
+            while True:
+                heartbeat += 1
+                await asyncio.sleep(0.01)
+
+        model = ScriptedModel(
+            [ModelStep(output=[function_call("slow_tool", {}, call_id="a")])]
+        )
+        agent = Agent(
+            name="slow",
+            model=model,
+            tools=[function_tool(slow_tool, failure_error_function=None)],
+        )
+        ticker = asyncio.create_task(tick())
+        task = asyncio.create_task(
+            Runner.run(agent, "go", run_config=RunConfig(tracing_disabled=True))
+        )
+        try:
+            await asyncio.wait_for(entered.wait(), timeout=1)
+            await asyncio.sleep(0.03)
+            assert heartbeat >= 2
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert len(model.calls) == 1
+        finally:
+            ticker.cancel()
+            await asyncio.gather(ticker, return_exceptions=True)
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("parallel", [True, False])
 def test_scripted_model_calls_weather_without_provider(parallel: bool) -> None:
     async def run() -> None:
