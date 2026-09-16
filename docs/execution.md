@@ -14,7 +14,7 @@ Evaluation: Judge 호출 → 전체 응답 검증 → 항목 결과 일괄 확�
 1. 인증 owner와 모든 참조의 동일 소유권, 요청 키, Experiment/Setup 및 선택한 사용자 실행 환경의 사용 가능 여부, 선택 Case의 Dataset 소속, Golden 정책, 도구/모델 구성, 실행 상한을 검증한다.
 2. `(experiment_id, idempotency_key)`와 canonical request hash로 중복을 판단한다. 같은 요청은 기존 Batch를 반환하고 다른 요청은 409다.
 3. Batch와 Run N개, 모든 Case Run과 Evaluation 슬롯을 **한 트랜잭션**으로 만든다. 참조와 Repeat 수는 이때 고정한다.
-4. commit 후 202를 반환한다. worker는 DB에 commit된 작업만 소비한다. 외부 큐와의 이중 쓰기는 없다.
+4. [실행 대기열과 자원 배분](scheduling.md)의 미종료 작업 상한을 같은 트랜잭션에서 검사한다. commit 후 202를 반환한다. worker는 DB에 commit된 작업만 소비한다. 외부 큐와의 이중 쓰기는 없다.
 
 동시 동일 키 요청은 DB unique constraint로 하나만 성공시키고 다른 요청은 기존 Batch를 조회한다. created_at은 실행 묶음의 식별자가 아니다.
 
@@ -26,8 +26,8 @@ Evaluation: Judge 호출 → 전체 응답 검증 → 항목 결과 일괄 확�
 | --- | --- |
 | Case/Experiment | 1~100 |
 | Repeats | 1~10; Batch당 Case Run 최대 1,000 |
-| worker | 첫 배포 1개, 진행 중 작업 최대 4개 |
-| 동시성 | Agent와 Judge가 같은 worker 슬롯 상한을 공유; 먼저 queued된 작업 우선 |
+| worker | 첫 배포 1개, 전체 실행 예약 최대 4개 |
+| 동시성 | owner별 최대 2개; Agent와 Judge가 슬롯을 공유; owner 간 순환 점유 |
 | max_turns | 모델 호출 10회; retry는 같은 turn의 별도 attempt |
 | Agent 전체 timeout | 120초; 호출·도구·retry 대기를 포함 |
 | 개별 모델 / 도구 / Judge timeout | 각각 60초 / 10초 / 60초, 남은 전체 제한보다 길 수 없음 |
@@ -35,7 +35,7 @@ Evaluation: Judge 호출 → 전체 응답 검증 → 항목 결과 일괄 확�
 | heartbeat / lease | 5초 / 30초; DB 시각으로 판정 |
 | 정리 종료 대기 | 10초 뒤 lease 복구에 맡김 |
 
-Agent 도구는 한 Case Run 안에서 모델이 반환한 순서대로 실행한다. Case Run끼리는 병렬 가능하다. 여러 worker·provider별 분산 rate limit은 상한 검증 후 확장한다.
+Agent 도구는 한 Case Run 안에서 모델이 반환한 순서대로 실행한다. Case Run끼리는 병렬 가능하다. 여러 Batch와 owner의 공정한 점유, 대기열 상한, 컨테이너 예약·정리는 [scheduling.md](scheduling.md)를 따른다. 여러 worker·provider별 분산 rate limit은 상한 검증 후 확장한다.
 
 ## Agent 실행 계약
 
@@ -103,13 +103,13 @@ Run 조회는 Evaluation 상태별 개수와 `evaluation_complete`(모두 termin
 
 ## 점유, 외부 호출, 결과 확정
 
-1. 짧은 트랜잭션에서 대상 부모 Run과 작업을 공통 잠금 순서로 잠근다. 선택은 `SKIP LOCKED`를 사용하고 pending/queued 상태를 다시 확인한다.
-2. 작업을 running으로 바꾸고 `lease_token`, `lease_expires_at`, `worker_id`를 저장한다. commit한다.
+1. 짧은 트랜잭션에서 scheduler 행을 잠그고 전체·owner별 미반환 예약을 확인한다. eligible owner를 순환 선택한 뒤 대상 부모 Run과 작업을 공통 잠금 순서로 잠근다. 선택은 `SKIP LOCKED`를 사용하고 pending/queued 상태를 다시 확인한다.
+2. 작업을 running으로 바꾸고 `lease_token`, `lease_expires_at`, `worker_id`와 실행 예약을 함께 저장한다. commit한다.
 3. DB 트랜잭션 밖에서 모델·도구를 호출한다. heartbeat는 짧은 별도 트랜잭션으로 유효한 token의 lease만 연장한다.
-4. Trace append, 사용량 기록, 결과 확정은 매번 token·running 상태·만료 시각을 확인하는 조건부 변경으로 처리한다. seq 할당과 append도 그 트랜잭션에 속한다.
-5. 종료 변경과 관련 Evaluation 전이/Run projection을 한 트랜잭션에서 확정한다. 결과를 보낸 뒤 늦게 도착한 중복 완료는 결과를 덮어쓰지 않는다.
+4. Trace append와 사용량 기록은 매번 token·running 상태·만료 시각을 확인하는 조건부 변경으로 처리한다. seq 할당과 append도 그 트랜잭션에 속한다.
+5. 격리 컨테이너와 자식 프로세스가 종료됐음을 확인하고 종료 변경과 관련 Evaluation 전이/Run projection을 한 트랜잭션에서 확정한다. 실행 예약 반환은 정리 확인 후에만 한다. 결과를 보낸 뒤 늦게 도착한 중복 완료는 결과를 덮어쓰지 않는다.
 
-lease 만료 시 복구기는 부모/작업을 잠그고 token을 무효화한다. running Agent는 `failed(worker_lost)`, running Evaluation은 `failed(worker_lost)`로 종료한다. pending/queued 작업은 계속 처리한다. 자동으로 Agent를 처음부터 재실행하지 않는다. 사용자는 새 Batch를 실행할 수 있다.
+lease 만료 시 복구기는 부모/작업을 잠그고 token을 무효화한다. running Agent는 `failed(worker_lost)`, running Evaluation은 `failed(worker_lost)`로 종료한다. 실행 예약은 컨테이너 정리 확인까지 유지한다. pending/queued 작업은 계속 처리한다. 자동으로 Agent를 처음부터 재실행하지 않는다. 사용자는 새 Batch를 실행할 수 있다.
 
 이 정책은 외부 호출의 exactly-once를 보장하지 않는다. provider가 처리했으나 응답을 받지 못했을 수 있으며 비용도 미확인일 수 있다. DB에 같은 결과가 중복 확정되는 것을 막고, 알 수 없는 외부 결과를 사실대로 남긴다.
 
