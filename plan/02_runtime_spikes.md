@@ -53,3 +53,11 @@ timeout·출력 제한·경로 이탈을 구분했다. **같은 호스트 사용
 다른 파일을 읽을 수 있음도 테스트로 확인했다.** 이 prototype은 파일/네트워크·
 메모리 격리를 제공하지 않으므로 제품 API/worker에 연결할 수 없다. 다음 단계는
 OS별 격리 실행 경계와 패키지 설치·SDK 실행, 자식 프로세스 정리를 검증하는 것이다.
+
+`bash backend/spikes/container_environment_smoke.sh`는 Docker의 제한된 Linux
+컨테이너 안에 `weather-py` 가상환경을 만들고, 선택한 dotenv의 가짜 키를 주입한
+Prompt를 평가했다. 실행 컨테이너에는 `.git`/타 owner 파일을 mount하지 않았고,
+서비스 DB 변수가 없으며 `--network none`에서 외부 연결이 실패했다. macOS Docker
+Desktop에서 통과했다. 이는 파일 mount·네트워크 차단의 작은 검증이다. 실제
+SDK 호출에 필요한 제한 네트워크, 메모리/출력 상한의 실패 분류, 강제 종료 뒤
+잔여 프로세스, Linux/CI 재현은 아직 확인하지 않았다.
