@@ -1,0 +1,48 @@
+[project]
+name = "agent-studio-backend"
+version = "0.1.0"
+description = "Agent Studio API and worker"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "alembic>=1.16",
+  "fastapi>=0.116",
+  "psycopg[binary]>=3.2",
+  "pydantic-settings>=2.10",
+  "sqlalchemy>=2.0",
+  "uuid6>=2025.0.1",
+  "uvicorn[standard]>=0.35",
+]
+
+[dependency-groups]
+dev = [
+  "httpx>=0.28",
+  "mypy>=1.17",
+  "pytest>=8.4",
+  "pytest-cov>=6.2",
+  "ruff>=0.12",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_studio"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers"
+testpaths = ["tests"]
+markers = ["integration: requires PostgreSQL or another external service"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = ["src", "tests"]
+plugins = ["pydantic.mypy"]

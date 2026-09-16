@@ -1,1 +1,13 @@
 .claude
+.DS_Store
+.env
+.venv/
+.uv-python/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pnpm-store/
+.next/
+node_modules/
+coverage/

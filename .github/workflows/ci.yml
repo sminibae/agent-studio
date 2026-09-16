@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.12.14"
+          python-version: "3.13.15"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.33.0"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24.21.0"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install locked dependencies
+        run: make install
+      - name: Check source
+        run: make check
+      - name: Test PostgreSQL integration
+        run: make test-integration
+      - name: Test frontend to database smoke
+        run: make test-e2e
