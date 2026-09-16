@@ -3,9 +3,21 @@
 import asyncio
 
 import pytest
-from agents import Agent, FunctionTool, ModelSettings, RunConfig, Runner, function_tool
-from agents.exceptions import MaxTurnsExceeded, ModelBehaviorError
+from agents import (
+    Agent,
+    FunctionTool,
+    ModelSettings,
+    RunConfig,
+    RunContextWrapper,
+    RunHooks,
+    Runner,
+    Tool,
+    function_tool,
+)
+from agents.exceptions import MaxTurnsExceeded, ModelBehaviorError, UserError
+from agents.items import ModelResponse
 from agents.testing import ModelStep, ScriptedModel, assistant_message, function_call
+from agents.usage import Usage
 
 
 def weather_tool(description: str) -> FunctionTool:
@@ -62,6 +74,86 @@ def test_invalid_tool_arguments_do_not_invoke_weather(arguments: str) -> None:
         )
         assert "37.5,127.0" not in str(result.new_items)
         assert "Error" in str(result.new_items)
+
+    asyncio.run(run())
+
+
+def test_explicit_error_policy_rejects_bad_arguments_and_tool_exception() -> None:
+    async def broken(value: int) -> str:
+        raise ValueError(f"bad value: {value}")
+
+    async def run() -> None:
+        tool = function_tool(broken, failure_error_function=None)
+        bad_args = ScriptedModel(
+            [
+                ModelStep(
+                    output=[function_call("broken", '{"value":"bad"}', call_id="a")]
+                )
+            ]
+        )
+        with pytest.raises(ModelBehaviorError):
+            await Runner.run(
+                Agent(name="broken", model=bad_args, tools=[tool]),
+                "go",
+                run_config=RunConfig(tracing_disabled=True),
+            )
+        raised = ScriptedModel(
+            [ModelStep(output=[function_call("broken", {"value": 1}, call_id="b")])]
+        )
+        with pytest.raises(UserError, match="Error running tool broken"):
+            await Runner.run(
+                Agent(name="broken", model=raised, tools=[tool]),
+                "go",
+                run_config=RunConfig(tracing_disabled=True),
+            )
+
+    asyncio.run(run())
+
+
+def test_local_hooks_survive_disabled_external_tracing() -> None:
+    class LocalEvents(RunHooks[None]):
+        def __init__(self) -> None:
+            self.events: list[str] = []
+
+        async def on_llm_end(
+            self,
+            context: RunContextWrapper[None],
+            agent: Agent[None],
+            response: ModelResponse,
+        ) -> None:
+            self.events.append(f"model:{response.usage.input_tokens}")
+
+        async def on_tool_end(
+            self,
+            context: RunContextWrapper[None],
+            agent: Agent[None],
+            tool: Tool,
+            result: object,
+        ) -> None:
+            self.events.append(f"tool:{tool.name}")
+
+    async def run() -> None:
+        model = ScriptedModel(
+            [
+                ModelStep(
+                    output=[
+                        function_call(
+                            "weather", {"latitude": 1, "longitude": 2}, call_id="a"
+                        )
+                    ],
+                    usage=Usage(input_tokens=7, output_tokens=3, total_tokens=10),
+                ),
+                ModelStep(output=[assistant_message("done")]),
+            ]
+        )
+        events = LocalEvents()
+        await Runner.run(
+            Agent(name="weather", model=model, tools=[weather_tool("weather")]),
+            "weather?",
+            hooks=events,
+            run_config=RunConfig(tracing_disabled=True),
+        )
+        assert events.events == ["model:7", "tool:weather", "model:0"]
 
     asyncio.run(run())
 

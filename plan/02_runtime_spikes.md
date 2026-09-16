@@ -33,17 +33,19 @@ typed decorator에서 숫자 schema가 생성되고, 동시에 실행한 두 Age
 다른 description을 유지했다. unknown tool은 `ModelBehaviorError`, turn 한도는
 `MaxTurnsExceeded`였다. 잘못된 인자는 기본 설정에서 모델에 오류 도구 결과로
 전달되어 다음 응답까지 진행했다. 따라서 [execution.md](../docs/execution.md)의
-"잘못된 인자면 Case Run 실패" 정책을 그대로 만족하지 않는다. SDK의 오류
-함수 설정 또는 adapter에서 실패로 변환해야 한다.
+"잘못된 인자면 Case Run 실패" 정책을 그대로 만족하지 않는다. `function_tool`
+생성 시 `failure_error_function=None`으로 두면 잘못된 인자는
+`ModelBehaviorError`, 도구 예외는 `UserError`로 올라옴을 확인했다. 제품 adapter는
+이 설정을 적용하고 안전한 오류 DTO로 변환해야 한다.
 
 | SDK 합격 기준 | 현재 상태 |
 | --- | --- |
 | 1. schema → registry 등록/복원 | schema 추출만 통과; registry 저장/복원 미검증 |
 | 2. Description 동시 격리 | fake model에서 통과 |
-| 3. unknown/invalid/exception/turn | unknown·invalid·turn 관찰; tool exception과 제품 정책 변환 미검증 |
+| 3. unknown/invalid/exception/turn | SDK 오류 동작과 명시적 실패 설정 통과; 제품 상태·Trace 변환 미검증 |
 | 4. retry/parallel/attempt/usage | parallel 설정 전달만 관찰; 실제 동시 호출·retry/usage 미검증 |
 | 5. 취소/deadline/heartbeat | 미검증 |
-| 6. 외부 tracing OFF와 로컬 DB Trace | 외부 tracing OFF 사용; 영속 로컬 Trace 미검증 |
+| 6. 외부 tracing OFF와 로컬 DB Trace | tracing OFF에서도 로컬 hooks의 모델 사용량·도구 이벤트 통과; 영속 DB Trace 미검증 |
 | 7. 웹/DB 없는 날씨 harness | fake weather 함수 호출 통과; HTTP adapter 미검증 |
 
 `user_environment.py`는 사용자가 만든 이름 지정 가상환경의 Python 실행 파일과
