@@ -38,6 +38,7 @@ SQLite로 PostgreSQL 테스트를 대체하지 않는다. fake repository만으�
 ## 반드시 검증할 사례
 
 - 두 사용자 A/B의 목록·상세·복제·Version 연결·실행·Trace·분석·cursor가 서로의 데이터를 노출하지 않는다. 교차 owner FK가 실제 DB에서 거부된다.
+- 두 사용자의 실행 환경 이름·가상환경·dotenv가 분리된다. 개발용 `.venv`·`.env`는 사용자 실행에 유입되지 않으며 사용자 A가 B의 파일·credential을 선택하거나 읽지 못한다.
 - 로그인 만료, 미허용 계정, identity header 위조, 직접 API 접근과 CSRF 요청을 거부한다.
 
 - Definition 편집은 새 Version을 만들고 이전 Setup·Dataset·실행 참조를 바꾸지 않는다.
@@ -71,7 +72,7 @@ SQLite로 PostgreSQL 테스트를 대체하지 않는다. fake repository만으�
 
 Provider/tool은 OpenAI와 등록된 날씨 HTTP 도구를 사용하고, 본 런타임 구현 전에 [agent-runtime.md](agent-runtime.md)의 SDK compatibility spike를 마친다. 채점 정책은 analytics의 검산 예시를 테스트로 고정한다. UI 범위와 배포 조건에 맞춰 구현 단위와 인수 기준을 유지한다.
 
-단계 1에 코드 편집기·Git commit과 DB Version 발행·owner별 원문 조회를 포함하고, 단계 2 전에 격리 실행과 결과 기록을 검증한다. 동시 저장 시 변경 혼입 방지, Git 성공 후 DB 실패·응답 유실, 작업 폴더가 바뀐 뒤 과거 commit 조회, 보존 참조·Git 정리 후 과거 Version 유지, DB와 Git 저장소의 복원을 확인한다. 실행 검증에는 저장/실행 시각이 다른 Prompt, Case Run별 재계산과 호출 retry의 값 유지, 결과 타입 오류·timeout, commit/파일 누락과 hash 불일치를 포함한다. 단계 4~5 전에 동적 평가 설정과 비교 계약을 정한다. 미정 항목은 [python-assets.md](python-assets.md)를 따른다.
+단계 1에 코드 편집기·Git commit과 DB Version 발행·owner별 원문 조회, 이름 붙인 사용자 가상환경·dotenv 관리와 Setup 선택을 포함하고, 단계 2 전에 선택 환경 실행과 격리·결과 기록을 검증한다. 동시 저장 시 변경 혼입 방지, Git 성공 후 DB 실패·응답 유실, 작업 폴더가 바뀐 뒤 과거 commit 조회, 보존 참조·Git 정리 후 과거 Version 유지, DB와 Git 저장소의 복원을 확인한다. 실행 검증에는 저장/실행 시각이 다른 Prompt, Case Run별 재계산과 호출 retry의 값 유지, 결과 타입 오류·timeout, commit/파일 누락과 hash 불일치를 포함한다. 단계 4~5 전에 동적 평가 설정과 비교 계약을 정한다. 미정 항목은 [python-assets.md](python-assets.md)를 따른다.
 
 ## 첫 완주 인수 시나리오
 

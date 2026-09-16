@@ -9,7 +9,7 @@
 - 저장은 새 자산 Version 발행이다. 사용자는 Git 명령을 입력하지 않고 서비스가 commit과 DB 등록을 처리한다.
 - 원문 보기·버전 간 차이 비교는 각 Version이 참조하는 Git 원문을 사용한다.
 - 미리보기는 코드를 실행해 실제 문자열·구조화된 값을 보여준다. 미리보기 결과를 이후 실행의 값으로 고정하지 않는다.
-- 사용자 자산 간 import는 첫 범위에 포함하지 않는다. `time` 등 표준 라이브러리의 허용 목록은 실행 환경의 계약으로 관리한다.
+- 사용자 자산 간 import는 첫 범위에 포함하지 않는다. 표준 라이브러리와 선택한 사용자 가상환경에 설치된 패키지는 [사용자 실행 환경](runtime-environments.md)의 계약으로 관리한다.
 
 ```python
 import time
@@ -67,7 +67,7 @@ Git과 PostgreSQL은 하나의 트랜잭션으로 묶이지 않는다. Git 저�
 1. 인증 owner 범위에서 Version과 저장소를 조회한다.
 2. 전체 commit ID와 저장소 내부 경로로 원문을 읽고 저장된 SHA-256·크기와 비교한다.
 3. 검증된 원문을 실행별 임시 디렉터리에 일반 파일로 준비한다.
-4. 격리된 실행 환경에서 Python을 실행하고 결과 변수·타입·자산 규칙을 검사한다.
+4. 선택한 사용자 가상환경의 Python과 dotenv로 별도 프로세스에서 실행하고 결과 변수·타입·자산 규칙을 검사한다.
 5. 실제 결과를 영속 기록한 뒤 Agent 또는 Judge에 전달한다.
 
 Git은 특정 commit의 파일을 작업 폴더 변경 없이 읽을 수 있다. 실행 시 `HEAD`나 브랜치의 최신 파일을 사용하지 않고, 공유 작업 폴더를 과거 commit으로 checkout하지 않는다. 저장소·commit·파일 누락과 hash 불일치는 오류로 처리한다. [Git 파일 조회](https://git-scm.com/docs/git-show)
@@ -88,13 +88,14 @@ Judge Prompt·Rubric은 Evaluation 시작 때 해석하고, 해당 작업의 Jud
 
 - 자산 Version ID와 저장소 ID·commit ID·파일 경로·원문 SHA-256.
 - 실행 환경 버전, 시작·종료 시각, 검증된 실제 결과와 결과 schema version.
+- 선택한 가상환경 ID·Python/패키지 digest와 dotenv revision ID. 비밀 값은 보존하지 않는다.
 - 실패 시 자산·오류 종류·코드 줄. 오류를 빈 프롬프트나 기본값으로 대체하지 않는다.
 
 실제 값을 모델/Judge 호출 전에 기록한다. 기록에 실패하면 후속 호출을 시작하지 않는다. lease·취소·owner·비밀 제거·크기 제한은 [execution.md](execution.md)와 [operations.md](operations.md)를 따른다. 과거 결과 조회는 기록된 값을 사용하며 Python을 다시 실행하지 않는다.
 
 ## 실행 격리와 운영
 
-사용자 Python은 웹·DB·모델 credential과 다른 사용자 파일에 접근할 수 없는 실행 환경에서 처리한다. 시간·메모리·출력·파일/네트워크 접근 제한을 적용하고 공유 프로세스의 import 캐시와 전역 상태를 실행 간 재사용하지 않는다. 미리보기에도 같은 경계를 적용한다. Git은 코드의 저장·형상관리를 담당하며 Python 실행 격리를 제공하지 않는다.
+사용자 Python은 웹·DB credential과 다른 사용자 파일에 접근할 수 없는 별도 프로세스에서 처리한다. 선택한 사용자 dotenv의 credential은 해당 Python에서 읽을 수 있다. 이는 사용자가 자신의 코드에 제공하기로 선택한 값이다. 서비스의 고정 `.env`와 `backend/.venv`는 사용자 실행에 사용하지 않는다. 시간·메모리·출력 제한과 프로세스 종료를 적용하고 공유 프로세스의 import 캐시와 전역 상태를 실행 간 재사용하지 않는다. 미리보기에도 같은 경계를 적용한다. 네트워크와 파일 접근의 세부 제한은 사용자 패키지·도구 호출과 함께 spike에서 검증한다. Git은 코드의 저장·형상관리를 담당하며 Python 실행 격리를 제공하지 않는다. 경계는 [runtime-environments.md](runtime-environments.md)를 따른다.
 
 백업에는 DB snapshot이 참조하는 모든 commit과 보존 참조를 포함한 Git 저장소를 담는다. 작업 폴더의 최신 `.py` 파일만 복사해서는 과거 Version을 복원할 수 없다. 복원 시 DB의 모든 원문 참조를 읽고 hash를 검사한다. 저장소 잠금·일관된 snapshot·보존 참조를 포함하는 백업 방식은 운영 검증에서 확인한다.
 
@@ -103,6 +104,6 @@ Judge Prompt·Rubric은 Evaluation 시작 때 해석하고, 해당 작업의 Jud
 - Prompt/Rubric 외 자산의 결과 변수·타입, 주입 입력, 실행 단위.
 - Dataset 멤버, Golden 대응, Tool 구현 참조처럼 실행 등록 전에 필요한 관계의 선언·검증 계약. 실행 중 관계 변경으로 기존 슬롯·FK를 무효화하지 않는다.
 - 동적으로 생성되는 Rubric/Scoring/Judge 설정의 비교 가능성. 같은 Version/Setup ID만으로 실제 평가 조건이 같다고 판단하지 않는다.
-- Python 격리 기술, 허용 표준 라이브러리, 자원 제한 값.
+- 사용자 가상환경·dotenv를 별도 프로세스에 전달하는 기술, 타 owner 접근 차단, 자원·네트워크 제한 값.
 - 저장소 잠금·발행 복구·백업 구현과 실제 파일·Git·DB 장애 검증.
 - 도구 함수 구현 자체의 웹 편집 범위. 배포 도구 registry의 계약은 [agent-runtime.md](agent-runtime.md)를 따른다.

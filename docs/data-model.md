@@ -138,6 +138,40 @@ tool_version
 
 최초 버전은 현재 배포에 포함된 구현만 실행할 수 있다. 과거 artifact가 없으면 `implementation_unavailable`로 거부하며 최신 함수로 조용히 대체하지 않는다. 과거 이력 조회는 가능하다. 오래된 코드 artifact를 실행하는 격리 worker/배포 전략은 후속 export/재실행 요구에 따라 추가한다.
 
+## 사용자 실행 환경
+
+개발용 `backend/.venv`와 저장소 `.env`는 아래 사용자 데이터에 포함하지 않는다.
+실제 파일은 owner별 작업 디렉터리에 두고 DB에는 이름·상태·참조만 저장한다.
+
+```text
+user_venv
+  id, owner_id FK, name, python_version, status, created_at
+  UNIQUE(owner_id, name)
+
+user_env_file
+  id, owner_id FK, name, current_revision_id, created_at
+  UNIQUE(owner_id, name)
+
+user_env_revision
+  id, owner_id, env_file_id FK, created_at
+  # 실제 dotenv 파일은 owner별 비밀 저장 위치에 보관; DB에 key/value 없음
+
+execution_environment
+  id, owner_id FK, name, venv_id FK, env_file_id FK, created_at, archived_at
+  UNIQUE(owner_id, name)
+
+agent_setup.execution_environment_id FK -> execution_environment
+evaluation_setup.execution_environment_id FK -> execution_environment
+```
+
+각 참조는 `(owner_id, id)` composite FK로 교차 owner 연결을 막는다. 이름은
+서버가 관리하는 owner 디렉터리의 상대 이름으로 제한하며 클라이언트의 절대
+경로를 저장하지 않는다. 환경 조합을 바꾸려면 새 Execution Environment를
+만들고 Setup을 복제한다. 패키지·dotenv 내용 수정은 다음 실행에 적용된다.
+실행마다 해석한 venv ID·Python 버전·패키지 digest와 env revision ID를
+Case Run/Evaluation의 환경 관측에 남긴다. 비밀 값이나 값의 hash는 저장하지
+않는다. 상세 파일 계약은 [runtime-environments.md](runtime-environments.md)를 따른다.
+
 ## Setup과 Experiment
 
 ```text
@@ -145,6 +179,7 @@ agent_setup
   id, name, description
   prompt_version_id FK
   model_config_version_id FK
+  execution_environment_id FK
   runtime_params, runtime_schema_version
   archived_at, created_at
 
@@ -157,6 +192,7 @@ agent_setup_tool_version
 evaluation_setup
   id, name, description
   dataset_version_id FK, golden_set_version_id FK nullable
+  execution_environment_id FK
   judge_prompt_version_id FK, judge_model_config_version_id FK
   rubric_version_id FK, scoring_rule_version_id FK
   missing_golden_policy CHECK in (fail, skip, rubric_only)
@@ -184,6 +220,7 @@ execution_batch
   idempotency_key, request_hash
   execution_policy, policy_schema_version
   runtime_artifact_digest, sdk_versions
+  # 실제 사용자 venv/dotenv 관측은 각 Case Run/Evaluation에 기록
   requested_by_actor FK -> app_user(id)    # 현재 owner와 동일
   created_at
   UNIQUE(experiment_id, idempotency_key)

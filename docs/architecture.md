@@ -90,7 +90,7 @@ e2e/
 
 - Application이 Unit of Work port를 통해 트랜잭션을 소유한다. repository는 commit하지 않는다.
 - Definition Version 발행, Setup 생성, 실행 요청 등록, 실행 결과 확정은 각자 짧은 트랜잭션이다.
-- Git 저장과 DB Version 발행은 서로 다른 저장 경계다. 일반 폴더의 원문을 commit하고 보존 참조를 만든 뒤 DB에 저장소·commit·경로를 등록한다. Git 저장소와 격리된 Python 실행기는 application port/adapter로 연결하며, Git I/O나 코드 실행 중 DB 트랜잭션을 유지하지 않는다. 동시 발행과 실패 복구는 [python-assets.md](python-assets.md)를 따른다.
+- Git 저장과 DB Version 발행은 서로 다른 저장 경계다. 일반 폴더의 원문을 commit하고 보존 참조를 만든 뒤 DB에 저장소·commit·경로를 등록한다. Git 저장소와 사용자별 Python 실행기는 application port/adapter로 연결하며, Git I/O나 코드 실행 중 DB 트랜잭션을 유지하지 않는다. 동시 발행과 실패 복구는 [python-assets.md](python-assets.md)를 따른다.
 - **모델/도구 네트워크 호출을 기다리며 DB 트랜잭션을 열어 두지 않는다.** 점유·호출·결과 저장을 구분한다.
 - 실행 등록 시 Batch, Runs, Case Runs, Evaluation 작업을 함께 생성한다. 행 수 상한으로 트랜잭션 크기를 제한한다.
 - 목록·Analytics는 query port로 필요한 read DTO를 조회한다. 읽기 때문에 거대한 aggregate를 복원하지 않는다.
@@ -105,6 +105,7 @@ e2e/
 | Frontend | TypeScript, Next.js App Router, React, shadcn/ui, Tailwind | 사용자에게 익숙한 Next.js 유지 |
 | DB | PostgreSQL | queue·FK·transaction·JSONB |
 | Agent runtime | OpenAI Agents SDK adapter | function_tool 등록, 첫 provider OpenAI; compatibility spike 필요 |
+| 사용자 실행 환경 | owner별 이름 붙인 `.venv`·`.env`, 별도 실행 프로세스 | 서비스 환경과 분리; [runtime-environments.md](runtime-environments.md) 검증 필요 |
 | 작업 실행 | 별도 worker + PostgreSQL queue | 작은 초기 규모, lease/fencing 계약 포함 |
 | 개발 도구 | uv, pnpm, Makefile, Docker Compose | 골격 단계에서 실제 명령과 버전 검증 |
 
@@ -118,6 +119,10 @@ Server/Client component의 역할은 [Next.js 공식 문서](https://nextjs.org/
 
 | 요청 | 의미 | 응답 |
 | --- | --- | --- |
+| `POST /venvs` | owner 범위에서 이름 붙인 가상환경 생성 | 202 + 환경 ID/설치 상태 |
+| `POST /venvs/{id}/packages` | 선택 가상환경에 패키지 설치 작업 요청 | 202 + 작업 ID |
+| `POST /env-files` / `PUT /env-files/{id}/entries` | owner dotenv 생성·키 갱신 | 파일 ID / 새 revision ID; 비밀 값은 응답에 없음 |
+| `POST /execution-environments` | venv와 dotenv 이름/ID를 묶어 선택 가능한 환경 생성 | 201 + 환경 ID |
 | `POST /agent-setups` | 검증된 Version 참조로 스냅샷 생성 | 201 + Setup |
 | `POST /evaluation-setups` | Dataset/Golden/Rubric 정합성 검증 후 생성 | 201 + Setup |
 | `POST /experiments` | 변경 불가능한 실험 구성 생성 | 201 + Experiment |
@@ -145,6 +150,7 @@ OpenAPI에서 TypeScript 타입/클라이언트를 생성하는 것을 기본안
 ## 모델·도구 경계
 
 Application 소유 port의 예는 `AgentRuntime`, Judge용 `ModelGateway`, `UnitOfWork`, `AnalysisReader`다. SDK 내부에서 끝나는 도구 왕복을 application에 중복 구현하지 않으며 registry/도구 실행 계약은 runtime adapter 안에서 연결한다. 구체 메서드는 실제 유스케이스 테스트에서 필요한 계약으로 정한다.
+worker는 사용자 환경 ID를 해석해 선택한 `.venv`의 Python으로 실행 프로세스를 시작한다. 선택한 `.env`만 그 프로세스에 주입하고 서비스 설정·DB credential은 전달하지 않는다. API와 worker 자신의 Python 환경은 바뀌지 않는다.
 
 모델 adapter는 provider 응답을 명시적인 메시지·도구 호출·사용량·오류 타입으로 변환한다. Agent와 Judge는 transport를 공유할 수 있지만 prompt 생성·결과 검증·상태 전이는 별도 책임이다. SDK 자동 retry는 끄거나 한 층으로 통합하여 실제 시도 수를 추적한다.
 
@@ -156,4 +162,4 @@ Application 소유 port의 예는 `AgentRuntime`, Judge용 `ModelGateway`, `Unit
 
 Repository/query port는 owner 범위를 요구하며 Setup/Golden/Batch/Trace를 교차 소유자로 연결하지 않는다. worker는 Batch owner를 이어받고 analytics도 입력 Run 모두의 owner를 검증한다. DB composite FK와 실제 두 사용자 격리 테스트로 뒷받침한다.
 
-서버·인증 프록시·TLS·비밀·백업은 [operations.md](operations.md)를 따른다. API key를 Definition/Setup/Trace에 저장하지 않고 secret reference만 사용한다.
+서버·인증 프록시·TLS·비밀·백업은 [operations.md](operations.md)를 따른다. 사용자 provider key는 owner별 dotenv 파일에 두며 Definition/Setup/Trace에는 환경 참조와 실행 시 revision만 저장한다.

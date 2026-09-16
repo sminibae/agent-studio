@@ -18,6 +18,7 @@
 
 - Agent Setups / Evaluation Setups 탭에 목록·검색·상세·새로 만들기·복제·보관을 제공한다.
 - 각 탭에 ‘자산 관리’ 진입점을 두어 관련 Prompt/Model/Tool/Dataset/Golden/Rubric/Scoring을 편집한다. Setup 작성 중에도 자산 선택기에서 생성·새 Version 발행으로 이동할 수 있다.
+- 사용자 실행 환경 관리에서 원하는 이름의 가상환경과 dotenv 파일을 만들고 패키지·키를 관리한다. Setup에서는 Agent와 Judge 환경을 각각 선택하고 Python 버전·설치 상태·필요한 키 존재 여부를 확인한다. 저장된 비밀 값은 다시 표시하지 않는다. 개발용 `.venv`·`.env`는 목록에 나타나지 않는다.
 - 자산 변경은 새 Version 생성임을 표시하고, 지금 만드는 Setup에 새 Version을 선택할지 보여준다. 이미 저장한 Setup은 자동으로 따라 바뀌지 않는다.
 - 자산 내용은 `.py` 코드 편집기를 중심으로 작성한다. 상단에 `system_prompt: str`, `items: list[dict]` 등 읽어 갈 변수·필수 항목을 안내한다. 함수·조건문·반복문을 지원하고 실제 실행 시 값을 계산한다. 저장 버튼으로 새 Version을 발행하며 Git commit은 서비스가 처리한다. 원문과 버전 간 차이는 DB Version이 참조한 commit에서 읽는다. 미리보기·오류 줄 표시와 원문/실제 결과의 구분은 [python-assets.md](python-assets.md)를 따른다.
 - 미저장 폼은 브라우저 상태의 draft다. DB의 불변 Setup에 부분 저장하지 않는다. 페이지 이탈 시 작성 내용 유실을 안내한다.
@@ -50,6 +51,7 @@ Agent completed를 ‘전체 평가 완료’로 표시하지 않는다. 취소�
 - call ID로 도구 호출과 결과를 연결한다. worker 중단으로 결과가 없으면 ‘중단됨·결과 미확인’을 보여준다.
 - 실패/취소에는 Final Answer가 없을 수 있다. 빈 텍스트를 성공 결과처럼 표시하지 않는다.
 - Judge는 별도 ‘평가’ 패널에서 입력·항목 판정·근거·오류·호출 사용량을 본다.
+- 실행에 사용한 환경 이름, Python/패키지 digest와 dotenv revision을 값 없이 확인한다.
 - 원문 JSON/Prompt/응답은 고정폭 글꼴, 접기, 검색, 복사를 제공한다. 비밀을 제거한 뒤 보여준다.
 - 모델의 내부 생각을 모두 볼 수 있다고 표시하지 않는다. API로 관측한 정보와 공개 요약만 표시한다.
 

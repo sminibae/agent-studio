@@ -18,6 +18,8 @@ Worker → OpenAI / 등록된 날씨 HTTP API
 
 PostgreSQL과 사용자별 자산 Git 저장소는 영속 volume을 사용한다. 자산 저장소는 애플리케이션 배포 디렉터리와 분리하고 Git 접근은 서비스 내부에서 처리한다. API/DB/worker 포트는 인터넷에 공개하지 않는다. Next.js와 API가 같은 origin 아래 있으므로 브라우저 CORS 우회 설정이 필요 없다. 첫 배포 자원 후보는 2 vCPU/4 GiB이며 부하 검증에서 조정한다. 처리량/SLA를 측정 전 보장하지 않는다.
 
+사용자별 가상환경과 dotenv도 별도 영속 영역에 둔다. 개발용 `backend/.venv`와 저장소 `.env`는 API·worker·개발 명령을 위한 고정 환경이며 사용자 실행 환경으로 재사용하지 않는다. [사용자 실행 환경](runtime-environments.md)을 따른다.
+
 ## 로그인 기본안
 
 Google OIDC + OAuth2 Proxy를 기본 후보로 둔다. 첫 배포에는 운영자가 지정한 한 계정만 allowlist로 허용한다. 로그인 provider의 최종 선택은 사용자 계정 환경을 확인한 뒤 설정한다. 앱 자체의 비밀번호 가입/재설정은 제공하지 않는다.
@@ -50,11 +52,11 @@ OAuth2 Proxy의 Google 연결과 이메일 허용 목록을 활용하고 Caddy�
 
 ## 비밀과 사용량
 
-첫 사용자 OpenAI credential은 서버 secret으로 주입하고 DB에는 식별자만 저장한다. prompt/도구 결과/오류/로그에 키가 남지 않도록 경계를 둔다. 브라우저에 provider key를 보내지 않는다.
+첫 사용자 OpenAI credential은 사용자가 소유한 dotenv 파일에 `OPENAI_API_KEY`로 둔다. DB에는 파일 참조와 revision만 저장한다. API/worker의 DB·proxy credential은 별도 서비스 `.env`에 둔다. 사용자 Python은 선택한 자기 dotenv의 값을 읽을 수 있다. prompt/도구 결과/오류/로그에 키가 남지 않도록 경계를 둔다. 브라우저에는 저장된 provider key를 다시 보내지 않는다.
 
-향후 두 번째 사용자를 허용하기 전에는 provider credential과 과금 주체를 사용자별로 둘지 서비스 계정을 공유할지 정한다. 개인 데이터 격리만으로 credential/비용 권한까지 정해진 것은 아니다. 첫 배포에서 owner별 secret 관리 UI를 미리 구현할 필요는 없다.
+향후 두 번째 사용자를 허용하기 전에는 owner별 실행 프로세스와 dotenv·패키지·과금 격리를 검증한다. 첫 배포에도 사용자별 dotenv 관리 UI를 제공한다. 각자의 provider key와 과금 주체를 사용하며 다른 owner의 파일을 선택하거나 읽을 수 없어야 한다.
 
-도구 코드는 운영자가 검토하여 artifact에 포함한다. Python 함수는 trusted code이며 decorator가 sandbox를 제공하지 않는다. 사용자 Python 자산은 별도 격리 환경에서 실행한다. 웹·DB·provider credential과 다른 사용자 파일에 접근하지 못하도록 하고 시간·메모리·출력·파일/네트워크 접근 정책을 적용한다. 허용 모듈과 격리 기술은 [python-assets.md](python-assets.md)의 구현 전 검증 항목이다.
+도구 코드는 운영자가 검토하여 artifact에 포함한다. Python 함수는 trusted code이며 decorator가 sandbox를 제공하지 않는다. 사용자 Python 자산은 별도 실행 환경에서 실행한다. 웹·DB credential과 다른 사용자 파일에 접근하지 못하도록 하고 시간·메모리·출력·파일/네트워크 접근 정책을 적용한다. 선택한 자기 dotenv의 provider credential에는 접근할 수 있다. 격리 기술은 [runtime-environments.md](runtime-environments.md)의 구현 전 검증 항목이다.
 
 ## 배포·복구 기본안
 
@@ -70,6 +72,8 @@ DB backup은 하루 1회 암호화하여 서버 밖에 저장하고 7일 보존�
 
 첫 버전은 자동 실행 이력 삭제를 하지 않고 저장 용량을 모니터링한다. 실제 데이터 보존 기간과 영구 삭제 정책은 실사용 데이터 반입 전에 정한다. Git 작업 폴더에서 파일을 삭제해도 과거 commit에는 원문이 남으므로 이력과 백업까지 포함한 제거 절차가 필요하다. 보관(archive)은 삭제가 아니다. 민감 원문 제거 시 관련 분석의 불완전 상태와 감사 기록을 남긴다.
 
+사용자 dotenv는 별도로 암호화 백업하고 접근 권한을 제한한다. 사용자 가상환경은 Python 버전·패키지 목록으로 재생성 가능하게 기록하되 실행 시 관측한 패키지 digest와 복원 결과를 검증한다. 비밀 파일의 과거 값은 실행 이력이나 Git 백업에 넣지 않는다.
+
 ## 관측성과 제한
 
 request/batch/run/case/evaluation/owner ID를 구조화 로그에 포함하되 Prompt와 secret을 기본 로그에 중복 기록하지 않는다. DB·worker heartbeat·queue 대기량·오류/timeout 수·저장 용량을 확인할 수 있어야 한다.
@@ -78,4 +82,4 @@ Case/Repeat/concurrency/deadline/Trace 크기는 [execution.md](execution.md), [
 
 ## 배포 전에 필요한 실제 값
 
-서버 위치/OS·도메인·Google 또는 대체 OIDC 앱 설정·허용 사용자 신원·OpenAI 사용 가능한 model ID·secret 주입·backup 저장 위치가 필요하다. 문서 단계에서는 임의 계정/비밀을 만들거나 서비스를 구매하지 않는다. 구체 값은 배포 준비 단계에서 확인하며, 그전에도 로컬 전체 서비스와 격리 테스트는 진행할 수 있다.
+서버 위치/OS·도메인·Google 또는 대체 OIDC 앱 설정·허용 사용자 신원·OpenAI 사용 가능한 model ID·사용자 dotenv 생성·backup 저장 위치가 필요하다. 문서 단계에서는 임의 계정/비밀을 만들거나 서비스를 구매하지 않는다. 구체 값은 배포 준비 단계에서 확인하며, 그전에도 로컬 전체 서비스와 격리 테스트는 진행할 수 있다.

@@ -11,7 +11,7 @@ Case Run: Agent 호출/도구 왕복 → Final Answer → Evaluation 대기열
 Evaluation: Judge 호출 → 전체 응답 검증 → 항목 결과 일괄 확정
 ```
 
-1. 인증 owner와 모든 참조의 동일 소유권, 요청 키, Experiment/Setup의 사용 가능 여부, 선택 Case의 Dataset 소속, Golden 정책, 도구/모델 구성, 실행 상한을 검증한다.
+1. 인증 owner와 모든 참조의 동일 소유권, 요청 키, Experiment/Setup 및 선택한 사용자 실행 환경의 사용 가능 여부, 선택 Case의 Dataset 소속, Golden 정책, 도구/모델 구성, 실행 상한을 검증한다.
 2. `(experiment_id, idempotency_key)`와 canonical request hash로 중복을 판단한다. 같은 요청은 기존 Batch를 반환하고 다른 요청은 409다.
 3. Batch와 Run N개, 모든 Case Run과 Evaluation 슬롯을 **한 트랜잭션**으로 만든다. 참조와 Repeat 수는 이때 고정한다.
 4. commit 후 202를 반환한다. worker는 DB에 commit된 작업만 소비한다. 외부 큐와의 이중 쓰기는 없다.
@@ -42,6 +42,7 @@ Agent 도구는 한 Case Run 안에서 모델이 반환한 순서대로 실행�
 첫 예시는 OpenAI 모델과 개발자가 Python decorator로 등록한 날씨 조회 HTTP 도구다. SDK adapter와 등록 계약은 [agent-runtime.md](agent-runtime.md)를 따른다. 아래 loop 규칙은 관찰할 동작 계약이며 SDK와 별도 loop를 중복 구현하라는 뜻이 아니다.
 
 - 입력은 Test Case의 명시적 입력 메시지와 Prompt 계약의 입력이다. Python Prompt 자산을 실행 시 평가하여 `system_prompt: str`을 얻고, 누락 변수·결과 타입을 모델 호출 전에 검사한다. 원문을 발행 시 계산한 문자열로 대체하지 않는다. Case Run별 실행 단위·격리·실제 값 기록은 [python-assets.md](python-assets.md)를 따른다.
+- Agent와 Judge는 각각 Setup에 고정된 사용자 Execution Environment를 사용한다. 가상환경과 dotenv의 현재 내용을 작업 시작 때 해석하고 실제 버전 관측을 기록한다. 재시도는 같은 작업에서 해석한 환경을 유지한다. 환경이 누락되거나 필요한 key·패키지가 없으면 모델 호출 전에 명시적으로 실패한다. [runtime-environments.md](runtime-environments.md)를 따른다.
 - 매 모델 응답은 Final Answer, Tool Calls, 오류 중 하나로 해석한다. Tool Calls가 있으면 등록된 이름과 JSON schema로 인자를 검증하고 순서대로 실행한 뒤 결과를 다음 모델 호출에 넣는다.
 - 등록되지 않은 도구, 잘못된 인자, 도구 실행 실패는 오류 Trace를 남기고 해당 Case Run을 실패로 끝내는 것을 첫 정책으로 한다. 모델의 자가 수정 루프는 후속 변경으로 별도 고정한다.
 - 유효한 최종 텍스트 응답을 받으면 `succeeded`다. 빈/해석 불가능한 응답, turn 한도 초과, timeout은 각각 명시적 실패다.

@@ -29,7 +29,10 @@ database container without deleting its volume.
 
 Development mode ignores incoming identity headers and provisions the fixed local
 developer from application settings. Production requires a trusted proxy credential
-and an allowlisted `(issuer, subject)` pair; see `.env.example` for variable names.
+and an allowlisted `(issuer, subject)` pair; see `.env.example` for service variable names.
+The development `backend/.venv` and root `.env` remain fixed for service commands.
+Product users create separate named virtual environments and dotenv files for Agent
+and Judge runs, as described in [`docs/runtime-environments.md`](docs/runtime-environments.md).
 
 ## Verify
 
