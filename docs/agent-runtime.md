@@ -41,12 +41,13 @@ Importer는 명시적 `registry_key`, 배포 artifact digest, entrypoint, 생성
 ## 실행 adapter
 
 Application은 `AgentRuntime` port에 `AgentExecutionSpec`, 입력, 취소/deadline, 이벤트 기록 계약을 전달한다. SDK adapter가 `Agent`와 Runner를 조립하고 결과를 중립 DTO로 돌려준다.
+Agent와 Judge의 실제 SDK 호출은 각 Setup이 선택한 사용자 가상환경의 Python에서 수행한다. 해당 환경의 dotenv에서 읽은 provider credential을 실행 프로세스에만 제공한다. API·worker의 개발/서비스 `.venv`·`.env`는 그대로 유지한다. SDK/runner 버전과 도구 의존성은 선택한 가상환경에서 검사한다. [사용자 실행 환경](runtime-environments.md)을 따른다.
 
 - SDK의 Agent/Runner ‘run’과 제품의 Run은 다르다. SDK 호출 한 번은 제품의 **Case Run 실행**을 구현한다.
 - Experiment 반복·DB 작업 선점·재시도 저장·권한·평가·Analytics는 제품이 소유한다.
 - SDK의 도구 호출/agent loop 기능을 우선 사용한다. 같은 loop를 따로 구현해 SDK와 이중 관리하지 않는다.
 - SDK 기본 동작이 [execution.md](execution.md)의 정책과 다르면 설정/얇은 adapter로 맞출 수 있는지 검증한다. 맞지 않으면 실행 계약 또는 runtime adapter를 조정한다.
-- SDK에는 DB session·HTTP request를 넘기지 않는다. Tool context에는 필요한 HTTP client/credential resolver 등 명시적 런타임 의존성만 주입한다.
+- SDK에는 DB session·HTTP request를 넘기지 않는다. Tool context에는 필요한 HTTP client 등 명시적 런타임 의존성만 주입한다. credential은 선택한 사용자 dotenv에서 주입된 프로세스 환경으로 해석한다.
 - Agent와 Judge는 별도 호출/기록이다. Judge에는 도구 실행 권한을 주지 않는다. Judge 입력은 Case 입력, Final Answer, 필요한 Agent Trace/도구 결과, Golden, Rubric이다.
 
 Model ID는 배포 환경에서 허용한 OpenAI 모델 목록에서 명시적으로 선택한다. Agent용과 Judge용을 각각 고정하고 같은 모델도 선택할 수 있다. 지원하지 않는 tool calling/출력 구조/parameter 조합은 등록 또는 실행 전에 거부하며 parameter를 조용히 버리지 않는다. 실제 첫 model ID는 계정의 사용 가능 모델을 확인하여 smoke 때 고정하고 문서 예시에 임의 최신 모델명을 박아 두지 않는다.
@@ -90,8 +91,8 @@ HTTP 공급자 기본 후보는 Open-Meteo다. 좌표에 대한 current temperat
 
 ## Python export를 위한 현재 경계
 
-Setup manifest는 자산 Version·저장소 ID·commit ID·파일 경로·원문 SHA-256·결과 계약, Tool Version·implementation 참조, runtime 정책과 schema version을 직렬화할 수 있어야 한다. 실행할 때 불변 참조를 해석하고 Python 자산을 평가한 실제 Prompt/설정으로 ExecutionSpec을 조립한다. 같은 원문 Version의 동적 결과는 실행마다 달라질 수 있다.
+Setup manifest는 자산 Version·저장소 ID·commit ID·파일 경로·원문 SHA-256·결과 계약, Tool Version·implementation 참조, 사용자 Execution Environment 참조, runtime 정책과 schema version을 직렬화할 수 있어야 한다. 실행할 때 불변 참조를 해석하고 Python 자산을 평가한 실제 Prompt/설정으로 ExecutionSpec을 조립한다. 같은 원문 Version의 동적 결과는 실행마다 달라질 수 있다.
 
-export 시 미래에 필요한 것은 manifest, Python 자산 원문과 실행 시 평가 계약, Python 도구 코드/의존성, runtime 조립 코드, 환경 변수 안내다. 미리 계산한 Prompt만 내보내 동적 의미를 잃지 않아야 한다. API key·사용자 비밀은 export하지 않는다. 함수 closure·서버 전역 DB 접근처럼 외부로 옮길 수 없는 의존성은 도구 등록 계약에서 드러나야 한다.
+export 시 미래에 필요한 것은 manifest, Python 자산 원문과 실행 시 평가 계약, Python 도구 코드/의존성, runtime 조립 코드, 사용자 가상환경 재생성 및 dotenv 변수 안내다. 미리 계산한 Prompt만 내보내 동적 의미를 잃지 않아야 한다. API key·사용자 비밀은 export하지 않는다. 함수 closure·서버 전역 DB 접근처럼 외부로 옮길 수 없는 의존성은 도구 등록 계약에서 드러나야 한다.
 
 독립 단일 `.py` 파일로 모든 의존성을 포함할지, `.py` + runtime package로 제공할지는 export 착수 때 결정한다. 지금 임의 코드 생성기·범용 workflow DSL을 만들지는 않는다.

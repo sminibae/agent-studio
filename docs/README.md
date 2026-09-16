@@ -22,6 +22,7 @@
 | [analytics.md](analytics.md) | 어떤 실행을 비교하며 지표는 어떻게 계산하는가? |
 | [architecture.md](architecture.md) | 의존성과 I/O 경계를 코드로 어떻게 표현하는가? |
 | [agent-runtime.md](agent-runtime.md) | Python 함수 등록, SDK 실행, 후속 export를 어떻게 연결하는가? |
+| [runtime-environments.md](runtime-environments.md) | 사용자별 `.venv`와 `.env`를 어떻게 만들고 선택하는가? |
 | [python-assets.md](python-assets.md) | Python 편집기, Git 원문 버전과 실행 시 값을 어떻게 연결하는가? |
 | [operations.md](operations.md) | 개인 데이터, 로그인, 배포와 복구를 어떻게 보장하는가? |
 | [data-model.md](data-model.md) | 규칙을 어떤 저장 구조와 제약으로 보장하는가? |
@@ -47,3 +48,4 @@
 자산은 Python 편집기로 작성하고 실행 시 약속된 변수 값을 읽는다. 원문은 서버의 일반 폴더에 저장하고 Git으로 형상관리한다. DB의 Version은 저장소 ID·commit ID·파일 경로를 참조한다. 편집·발행·실행 규칙은 [python-assets.md](python-assets.md)를 따른다.
 
 기술 구조는 Next.js + FastAPI + PostgreSQL, 모듈화한 백엔드와 별도 worker, SDK runtime adapter다. owner-scoped 데이터와 실제 DB 격리 테스트를 적용한다. 로그인 provider, 배포 설정과 SDK 호환성은 구현·운영 단계에서 검증한다.
+개발용 `.venv`·`.env`와 사용자별 실행 환경은 [별도 계약](runtime-environments.md)으로 분리한다.

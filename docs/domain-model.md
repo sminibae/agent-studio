@@ -75,7 +75,7 @@ Model Config·Golden Set·Scoring Rule을 포함한 위 종류는 독립 편집�
 
 ### Agent Setup
 
-Agent Prompt Version, Model Config Version, 순서 있는 Tool Version 목록, Agent Runtime Parameters를 묶은 불변 실행 구성이다.
+Agent Prompt Version, Model Config Version, 순서 있는 Tool Version 목록, Agent Runtime Parameters와 사용자 Execution Environment 참조를 묶은 불변 실행 구성이다.
 
 Runtime Parameters는 `max_turns`, 실행 timeout 등 Agent 제어값이며 모델 sampling parameter와 구분한다. 같은 Tool 이름을 두 번 노출할 수 없다. Tool Description만 바꿔도 새 Tool Version과 새 Setup이 된다.
 
@@ -83,7 +83,9 @@ Runtime Parameters는 `max_turns`, 실행 timeout 등 Agent 제어값이며 모�
 
 ### Evaluation Setup
 
-Dataset Version, Golden Set Version(선택), Judge Prompt/Model Config Version, Rubric/Scoring Rule Version, `missing_golden_policy`를 고정한다.
+Dataset Version, Golden Set Version(선택), Judge Prompt/Model Config Version, Rubric/Scoring Rule Version, 사용자 Execution Environment 참조, `missing_golden_policy`를 고정한다.
+
+Execution Environment는 owner가 이름 붙인 `.venv`와 `.env`의 조합이다. Setup은 선택한 환경 ID를 고정하지만 환경 파일의 내용은 실행 시 읽는다. 실제 사용한 패키지 digest와 dotenv revision은 실행 기록에 남긴다. [사용자 실행 환경](runtime-environments.md)을 따른다.
 
 - `fail`: 실행 대상으로 선택한 Case에 Golden이 없으면 실행 등록을 거부한다.
 - `skip`: 해당 Case의 Evaluation을 `skipped`로 둔다.
