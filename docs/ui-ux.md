@@ -31,7 +31,7 @@ Setup 저장 전 구성 요약에서 Prompt/Tool/Model/평가 조건의 Version�
 
 Experiment는 Agent Setup 하나, Evaluation Setup 하나, Case 범위, Repeats로 생성한다. 구성 변경은 복제다.
 
-실행 전 `100 Cases × 3 Repeats = 300 Case Runs`처럼 요청량과 동시 실행 상한을 표시한다. 버튼 중복 클릭/네트워크 재전송에 같은 idempotency key를 사용한다. 사용자가 의도적으로 다시 실행할 때만 새 키를 만든다.
+실행 전 `100 Cases × 3 Repeats = 300 Case Runs`처럼 요청량과 현재 배포 설정의 동시 실행 상한(첫 기본안: 전체 4개·사용자별 2개)을 표시한다. 등록 후 Batch/Run의 대기·실행·완료 개수를 보여준다. 시작 예정 시각이나 확정 대기 순번은 약속하지 않는다. owner 또는 전체 대기열 상한에 도달하면 `queue_capacity_exceeded`를 안내하고 나중에 재시도할 수 있게 한다. 버튼 중복 클릭/네트워크 재전송에 같은 idempotency key를 사용한다. 사용자가 의도적으로 다시 실행할 때만 새 키를 만든다.
 
 Experiment 상세는 Execution Batch마다 실행 시각·요청자·Run 목록을 묶는다. created_at으로 묶음을 추론하지 않는다. Runs 목록은 `Batch / Repeat / Agent status / Agent progress / Evaluation progress`를 보여준다.
 

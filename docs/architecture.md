@@ -146,6 +146,7 @@ OpenAPI에서 TypeScript 타입/클라이언트를 생성하는 것을 기본안
 - PostgreSQL `SKIP LOCKED`는 작업 선점에 사용한다. 실제 신뢰성은 lease·fencing·멱등 저장·복구 계약으로 보장한다.
 - [PostgreSQL SELECT 문서](https://www.postgresql.org/docs/current/sql-select.html)는 `SKIP LOCKED`가 큐 형태 소비에 사용 가능함을 설명한다. 이것만으로 외부 모델·도구 호출의 exactly-once를 보장하지 않는다.
 - API는 실행을 DB에 등록하고 응답한다. 요청 프로세스의 background task에 장시간 작업을 맡기지 않는다.
+- Batch 등록과 worker 점유는 같은 DB scheduler 행으로 상한 판단을 직렬화한다. owner별 순환 선택과 컨테이너 정리 전 슬롯 보유는 [scheduling.md](scheduling.md)를 따른다.
 
 ## 모델·도구 경계
 

@@ -16,7 +16,7 @@ FastAPI → PostgreSQL ← Worker (동일 backend artifact)
 Worker → OpenAI / 등록된 날씨 HTTP API
 ```
 
-PostgreSQL과 사용자별 자산 Git 저장소는 영속 volume을 사용한다. 자산 저장소는 애플리케이션 배포 디렉터리와 분리하고 Git 접근은 서비스 내부에서 처리한다. API/DB/worker 포트는 인터넷에 공개하지 않는다. Next.js와 API가 같은 origin 아래 있으므로 브라우저 CORS 우회 설정이 필요 없다. 첫 배포 자원 후보는 2 vCPU/4 GiB이며 부하 검증에서 조정한다. 처리량/SLA를 측정 전 보장하지 않는다.
+PostgreSQL과 사용자별 자산 Git 저장소는 영속 volume을 사용한다. 자산 저장소는 애플리케이션 배포 디렉터리와 분리하고 Git 접근은 서비스 내부에서 처리한다. API/DB/worker 포트는 인터넷에 공개하지 않는다. Next.js와 API가 같은 origin 아래 있으므로 브라우저 CORS 우회 설정이 필요 없다. 첫 배포 자원 후보는 2 vCPU/4 GiB이며 4개 실행 컨테이너와 서비스·DB의 최악 자원 사용량을 부하 검증한 뒤 전체 슬롯을 확정한다. 부족하면 슬롯을 낮추거나 호스트를 늘린다. 처리량/SLA를 측정 전 보장하지 않는다. [실행 대기열과 자원 배분](scheduling.md)을 따른다.
 
 사용자별 가상환경과 dotenv도 별도 영속 영역에 둔다. 개발용 `backend/.venv`와 저장소 `.env`는 API·worker·개발 명령을 위한 고정 환경이며 사용자 실행 환경으로 재사용하지 않는다. [사용자 실행 환경](runtime-environments.md)을 따른다.
 
@@ -76,7 +76,7 @@ DB backup은 하루 1회 암호화하여 서버 밖에 저장하고 7일 보존�
 
 ## 관측성과 제한
 
-request/batch/run/case/evaluation/owner ID를 구조화 로그에 포함하되 Prompt와 secret을 기본 로그에 중복 기록하지 않는다. DB·worker heartbeat·queue 대기량·오류/timeout 수·저장 용량을 확인할 수 있어야 한다.
+request/batch/run/case/evaluation/owner ID를 구조화 로그에 포함하되 Prompt와 secret을 기본 로그에 중복 기록하지 않는다. DB·worker heartbeat·owner별 queue 대기 시간·실행 예약과 실제 컨테이너 수·정리 대기·오류/timeout 수·CPU/메모리·저장 용량을 확인할 수 있어야 한다. owner별 운영 지표는 다른 사용자에게 보여주지 않는다.
 
 Case/Repeat/concurrency/deadline/Trace 크기는 [execution.md](execution.md), [agent-runtime.md](agent-runtime.md)의 상한을 적용한다. 한도 초과가 worker/DB 전체 장애로 번지지 않도록 입력과 저장 경계에서 검사한다.
 

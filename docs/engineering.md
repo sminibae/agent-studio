@@ -48,6 +48,8 @@ SQLite로 PostgreSQL 테스트를 대체하지 않는다. fake repository만으�
 - 같은 멱등 키의 동시 요청도 Batch를 하나만 만들고 다른 payload는 409다.
 - 취소 전부/일부, 성공·실패 혼합, Agent 완료·Judge 대기 등 상태 조합이 정의와 일치한다.
 - worker 점유 만료 뒤 늦은 성공/Trace 쓰기가 차단된다. 실행 중 Agent를 자동 재실행하지 않는다.
+- 두 owner가 여러 Batch를 동시에 등록해도 전체 4개·owner별 2개 실행 예약을 넘지 않고, 새 슬롯은 대기 owner에 공정하게 돌아간다. 실행 컨테이너 정리 실패 중에는 해당 슬롯이 반환되지 않는다.
+- owner·전체 대기열 상한의 동시 등록은 원자적으로 거부되며 같은 idempotency key 재전송은 기존 Batch를 반환한다. 패키지 설치 중에도 기존 작업의 가상환경 revision은 바뀌지 않는다.
 - retry는 Case Run/Repeat 수를 늘리지 않으며 호출별 기록·비용 범위를 보존한다.
 - Judge의 누락/중복/범위 밖 항목은 점수로 공개하지 않는다. 완전한 결과만 원자적으로 공개한다.
 - Agent 실패, Judge 실패, skip, 취소, 진행 중, 빈 Scope, 비용 unknown을 구분한다.
