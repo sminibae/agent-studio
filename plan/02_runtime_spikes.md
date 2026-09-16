@@ -45,7 +45,7 @@ typed decorator에서 숫자 schema가 생성되고, 동시에 실행한 두 Age
 
 | SDK 합격 기준 | 현재 상태 |
 | --- | --- |
-| 1. schema → registry 등록/복원 | schema 추출만 통과; registry 저장/복원 미검증 |
+| 1. schema → registry 등록/복원 | JSON manifest와 허용 factory registry 복원, unknown key/schema drift 거부 통과; 실제 DB·artifact digest 검증 미구현 |
 | 2. Description 동시 격리 | fake model에서 통과 |
 | 3. unknown/invalid/exception/turn | SDK 오류 동작과 명시적 실패 설정 통과; 제품 상태·Trace 변환 미검증 |
 | 4. retry/parallel/attempt/usage | runner retry 정책·시도 수, provider parallel 설정 전달, 로컬 도구 동시 실행 상한 1/2, 성공 응답 usage hook 관찰; 실패 attempt 영속 기록 미검증 |
