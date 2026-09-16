@@ -58,6 +58,24 @@ def test_source_can_observe_its_own_dotenv(user_venv: Path, tmp_path: Path) -> N
     )
 
 
+def test_import_comes_from_selected_venv(user_venv: Path, tmp_path: Path) -> None:
+    site_packages = (
+        user_venv.parent.parent
+        / "lib"
+        / f"python{sys.version_info.major}.{sys.version_info.minor}"
+        / "site-packages"
+    )
+    (site_packages / "owner_marker.py").write_text("VALUE = 'from-user-venv'\n")
+    dotenv = tmp_path / ".env.test"
+    dotenv.write_text("")
+    assert (
+        evaluate_prompt(
+            user_venv, dotenv, "import owner_marker\nsystem_prompt = owner_marker.VALUE"
+        )
+        == "from-user-venv"
+    )
+
+
 def test_test_interpreter_is_distinct_from_user_venv(user_venv: Path) -> None:
     assert user_venv.resolve() != Path(sys.executable).resolve()
 
