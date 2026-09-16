@@ -12,6 +12,7 @@ from agents import (
     RunHooks,
     Runner,
     Tool,
+    ToolExecutionConfig,
     function_tool,
 )
 from agents.exceptions import MaxTurnsExceeded, ModelBehaviorError, UserError
@@ -240,6 +241,51 @@ def test_cancelled_async_tool_allows_heartbeat_and_no_second_model_call() -> Non
             await asyncio.gather(ticker, return_exceptions=True)
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("concurrency,expected", [(1, 1), (2, 2)])
+def test_local_tool_concurrency_is_explicit(concurrency: int, expected: int) -> None:
+    async def run() -> int:
+        active = 0
+        maximum = 0
+
+        async def slow(value: int) -> str:
+            nonlocal active, maximum
+            active += 1
+            maximum = max(maximum, active)
+            await asyncio.sleep(0.02)
+            active -= 1
+            return str(value)
+
+        model = ScriptedModel(
+            [
+                ModelStep(
+                    output=[
+                        function_call("slow", {"value": 1}, call_id="a"),
+                        function_call("slow", {"value": 2}, call_id="b"),
+                    ]
+                ),
+                ModelStep(output=[assistant_message("done")]),
+            ]
+        )
+        await Runner.run(
+            Agent(
+                name="parallel",
+                model=model,
+                tools=[function_tool(slow)],
+                model_settings=ModelSettings(parallel_tool_calls=True),
+            ),
+            "go",
+            run_config=RunConfig(
+                tracing_disabled=True,
+                tool_execution=ToolExecutionConfig(
+                    max_function_tool_concurrency=concurrency
+                ),
+            ),
+        )
+        return maximum
+
+    assert asyncio.run(run()) == expected
 
 
 @pytest.mark.parametrize("parallel", [True, False])
