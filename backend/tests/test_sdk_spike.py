@@ -16,6 +16,8 @@ from agents import (
 )
 from agents.exceptions import MaxTurnsExceeded, ModelBehaviorError, UserError
 from agents.items import ModelResponse
+from agents.model_settings import ModelRetryBackoffSettings, ModelRetrySettings
+from agents.retry import ModelRetryAdvice, retry_policies
 from agents.testing import ModelStep, ScriptedModel, assistant_message, function_call
 from agents.usage import Usage
 
@@ -156,6 +158,45 @@ def test_local_hooks_survive_disabled_external_tracing() -> None:
         assert events.events == ["model:7", "tool:weather", "model:0"]
 
     asyncio.run(run())
+
+
+def test_runner_retry_is_explicit_and_counts_model_attempts() -> None:
+    async def run(retries: int) -> tuple[str, int]:
+        model = ScriptedModel(
+            [
+                ModelStep(
+                    error=RuntimeError("transient"),
+                    retry_advice=ModelRetryAdvice(suggested=True, replay_safety="safe"),
+                ),
+                ModelStep(output=[assistant_message("recovered")]),
+            ]
+        )
+        agent = Agent(
+            name="retry",
+            model=model,
+            model_settings=ModelSettings(
+                retry=ModelRetrySettings(
+                    max_retries=retries,
+                    backoff=ModelRetryBackoffSettings(
+                        initial_delay=0, max_delay=0, jitter=False
+                    ),
+                    policy=retry_policies.provider_suggested(),
+                )
+            ),
+        )
+        if retries == 0:
+            with pytest.raises(RuntimeError, match="transient"):
+                await Runner.run(
+                    agent, "go", run_config=RunConfig(tracing_disabled=True)
+                )
+            return "failed", len(model.calls)
+        result = await Runner.run(
+            agent, "go", run_config=RunConfig(tracing_disabled=True)
+        )
+        return str(result.final_output), len(model.calls)
+
+    assert asyncio.run(run(0)) == ("failed", 1)
+    assert asyncio.run(run(1)) == ("recovered", 2)
 
 
 @pytest.mark.parametrize("parallel", [True, False])

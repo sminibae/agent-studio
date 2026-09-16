@@ -37,13 +37,18 @@ typed decorator에서 숫자 schema가 생성되고, 동시에 실행한 두 Age
 생성 시 `failure_error_function=None`으로 두면 잘못된 인자는
 `ModelBehaviorError`, 도구 예외는 `UserError`로 올라옴을 확인했다. 제품 adapter는
 이 설정을 적용하고 안전한 오류 DTO로 변환해야 한다.
+모델 retry는 `max_retries`만 지정해서는 활성화되지 않았다. `policy`에
+`retry_policies.provider_suggested()`를 함께 전달하고 provider가 안전한 재시도를
+권고할 때 1회 실패 뒤 2번째 시도로 복구했다. `max_retries=0`에서는 같은 오류가
+1회 시도로 끝났다. 실패 attempt의 제품 이벤트·사용량 영속 기록은 별도 구현이
+필요하다.
 
 | SDK 합격 기준 | 현재 상태 |
 | --- | --- |
 | 1. schema → registry 등록/복원 | schema 추출만 통과; registry 저장/복원 미검증 |
 | 2. Description 동시 격리 | fake model에서 통과 |
 | 3. unknown/invalid/exception/turn | SDK 오류 동작과 명시적 실패 설정 통과; 제품 상태·Trace 변환 미검증 |
-| 4. retry/parallel/attempt/usage | parallel 설정 전달만 관찰; 실제 동시 호출·retry/usage 미검증 |
+| 4. retry/parallel/attempt/usage | runner retry 정책·시도 수, parallel 설정 전달, 성공 응답 usage hook 관찰; 실제 병렬성·실패 attempt 영속 기록 미검증 |
 | 5. 취소/deadline/heartbeat | 미검증 |
 | 6. 외부 tracing OFF와 로컬 DB Trace | tracing OFF에서도 로컬 hooks의 모델 사용량·도구 이벤트 통과; 영속 DB Trace 미검증 |
 | 7. 웹/DB 없는 날씨 harness | fake weather 함수 호출 통과; HTTP adapter 미검증 |
