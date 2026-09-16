@@ -25,3 +25,31 @@
 2. 이름 지정 가상환경·dotenv 실행 prototype과 정상/실패 테스트를 작성한다.
 3. OS별 실행 격리, timeout·메모리·출력·자식 프로세스 정리를 공격 테스트한다.
 4. 관찰 결과와 남은 불일치를 본 문서와 설계 문서에 반영한다.
+
+## 현재 관찰
+
+`openai-agents==0.22.2`를 고정하고 `test_sdk_spike.py`를 fake model로 실행했다.
+typed decorator에서 숫자 schema가 생성되고, 동시에 실행한 두 Agent가 서로
+다른 description을 유지했다. unknown tool은 `ModelBehaviorError`, turn 한도는
+`MaxTurnsExceeded`였다. 잘못된 인자는 기본 설정에서 모델에 오류 도구 결과로
+전달되어 다음 응답까지 진행했다. 따라서 [execution.md](../docs/execution.md)의
+"잘못된 인자면 Case Run 실패" 정책을 그대로 만족하지 않는다. SDK의 오류
+함수 설정 또는 adapter에서 실패로 변환해야 한다.
+
+| SDK 합격 기준 | 현재 상태 |
+| --- | --- |
+| 1. schema → registry 등록/복원 | schema 추출만 통과; registry 저장/복원 미검증 |
+| 2. Description 동시 격리 | fake model에서 통과 |
+| 3. unknown/invalid/exception/turn | unknown·invalid·turn 관찰; tool exception과 제품 정책 변환 미검증 |
+| 4. retry/parallel/attempt/usage | parallel 설정 전달만 관찰; 실제 동시 호출·retry/usage 미검증 |
+| 5. 취소/deadline/heartbeat | 미검증 |
+| 6. 외부 tracing OFF와 로컬 DB Trace | 외부 tracing OFF 사용; 영속 로컬 Trace 미검증 |
+| 7. 웹/DB 없는 날씨 harness | fake weather 함수 호출 통과; HTTP adapter 미검증 |
+
+`user_environment.py`는 사용자가 만든 이름 지정 가상환경의 Python 실행 파일과
+dotenv 값을 사용해 Prompt를 평가한다. 테스트에서 개발 서비스 환경 변수는
+자식에 전달되지 않고, dotenv를 수정하면 다음 실행에 새 값이 반영되며, 타입 오류·
+timeout·출력 제한·경로 이탈을 구분했다. **같은 호스트 사용자로 실행한 자식이
+다른 파일을 읽을 수 있음도 테스트로 확인했다.** 이 prototype은 파일/네트워크·
+메모리 격리를 제공하지 않으므로 제품 API/worker에 연결할 수 없다. 다음 단계는
+OS별 격리 실행 경계와 패키지 설치·SDK 실행, 자식 프로세스 정리를 검증하는 것이다.
