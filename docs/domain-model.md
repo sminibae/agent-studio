@@ -38,7 +38,9 @@ Definition → Definition Version → Agent Setup ──────┐
 
 ## 사용자와 소유권
 
-각 사용자는 자기 자산·Setup·실행·분석만 접근한다. 첫 배포 사용자가 한 명이어도 이 경계를 구현한다. 모든 개인 데이터에는 owner가 있고 서로 다른 owner의 Version/Setup/Run을 연결할 수 없다. 사용자 간 공유와 역할별 권한은 첫 범위가 아니다.
+각 사용자는 자기 자산·Setup·실행·분석만 접근한다. 복수 사용자가 동시에 작업을
+제출해도 이 경계를 유지한다. 모든 개인 데이터에는 owner가 있고 서로 다른 owner의
+Version/Setup/Run을 연결할 수 없다. 사용자 간 공유와 역할별 권한은 첫 범위가 아니다.
 
 Tool Definition/Version은 사용자가 Python 편집기에서 작성한 개인 자산이다. 인증
 신원은 `(issuer, subject)`로 식별하고 email을 소유자 ID로 사용하지 않는다. 실제

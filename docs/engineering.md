@@ -39,6 +39,8 @@ SQLite로 PostgreSQL 테스트를 대체하지 않는다. fake repository만으�
 
 - 두 사용자 A/B의 목록·상세·복제·Version 연결·실행·Trace·분석·cursor가 서로의 데이터를 노출하지 않는다. 교차 owner FK가 실제 DB에서 거부된다.
 - 두 사용자의 실행 환경 이름·가상환경·dotenv가 분리된다. 개발용 `.venv`·`.env`는 사용자 실행에 유입되지 않으며 사용자 A가 B의 파일·credential을 선택하거나 읽지 못한다.
+- A와 B가 동시에 작업을 제출해도 owner별 슬롯과 순환 점유가 적용되고, 각자의
+  Tool 원문·schema·빌드/실행 오류가 상대방에게 노출되지 않는다.
 - 로그인 만료, 미허용 계정, identity header 위조, 직접 API 접근과 CSRF 요청을 거부한다.
 
 - Definition 편집은 새 Version을 만들고 이전 Setup·Dataset·실행 참조를 바꾸지 않는다.

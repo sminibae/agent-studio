@@ -147,6 +147,9 @@ OpenAPI에서 TypeScript 타입/클라이언트를 생성하는 것을 기본안
 - [PostgreSQL SELECT 문서](https://www.postgresql.org/docs/current/sql-select.html)는 `SKIP LOCKED`가 큐 형태 소비에 사용 가능함을 설명한다. 이것만으로 외부 모델·도구 호출의 exactly-once를 보장하지 않는다.
 - API는 실행을 DB에 등록하고 응답한다. 요청 프로세스의 background task에 장시간 작업을 맡기지 않는다.
 - Batch 등록과 worker 점유는 같은 DB scheduler 행으로 상한 판단을 직렬화한다. owner별 순환 선택과 컨테이너 정리 전 슬롯 보유는 [scheduling.md](scheduling.md)를 따른다.
+- Queue 점유는 application port 뒤에 두고 실행 유스케이스가 PostgreSQL polling이나
+  Celery decorator를 import하지 않게 한다. Redis wake-up과 broker/outbox 확장
+  조건은 [scheduling.md](scheduling.md)를 따른다.
 
 ## 모델·도구 경계
 
@@ -163,7 +166,9 @@ worker는 사용자 환경 ID를 해석해 선택한 `.venv`의 Python으로 실
 
 ## 인증과 소유권 경계
 
-브라우저 로그인 뒤에도 모든 리소스는 사용자 개인 소유다. 첫 배포에는 한 계정만 허용한다. Application command/query에는 인증으로 결정한 owner context를 전달한다. 클라이언트가 임의 owner를 지정할 수 없다.
+브라우저 로그인 뒤에도 모든 리소스는 사용자 개인 소유다. 첫 완성본부터
+allowlist의 복수 계정이 동시에 사용한다. Application command/query에는 인증으로
+결정한 owner context를 전달한다. 클라이언트가 임의 owner를 지정할 수 없다.
 
 Repository/query port는 owner 범위를 요구하며 Setup/Golden/Batch/Trace를 교차 소유자로 연결하지 않는다. worker는 Batch owner를 이어받고 analytics도 입력 Run 모두의 owner를 검증한다. DB composite FK와 실제 두 사용자 격리 테스트로 뒷받침한다.
 

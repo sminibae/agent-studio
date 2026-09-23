@@ -94,3 +94,29 @@ Batch, 4/2 슬롯 상한, 공정한 다음 점유, 등록 상한과 멱등 재�
 worker 강제 종료, orphan 컨테이너, lease 만료 뒤 늦은 쓰기, 정리 실패로 슬롯이
 남는 경우를 검증한다. 2 vCPU/4 GiB 후보의 부하와 provider 제한은 배포 전
 측정한다. 이 문서는 목표 계약이며 현재 제품 worker 구현 완료를 뜻하지 않는다.
+
+## Redis와 Celery로 확장하는 조건
+
+첫 구현은 PostgreSQL polling으로 시작한다. worker는 사용할 수 있는 슬롯만큼만
+점유하며 빈 큐에서는 약 1초 간격으로 조회하고, 계속 비어 있으면 최대 5초까지
+backoff와 jitter를 적용한다. 실제 polling 부하와 작업 접수 후 시작 지연을 먼저
+측정한다.
+
+1. polling 부하나 시작 지연만 문제가 되면 Redis를 **wake-up 신호**로 먼저
+   검토한다. PostgreSQL 작업 행이 상태의 기준이며 Redis 알림은 유실 가능한
+   힌트다. 알림이 없어도 주기적인 DB 조회로 작업을 발견해야 한다.
+2. 여러 서버의 worker 라우팅·전달·재전송을 broker에 맡길 운영 필요가 생기면
+   Celery 또는 다른 broker adapter를 검토한다. worker 수가 늘었다는 이유만으로
+   바로 Celery를 도입하지 않는다.
+3. broker 발행이 필요하면 작업 등록과 outbox INSERT를 같은 PostgreSQL
+   트랜잭션에서 처리한다. dispatcher는 미발행 outbox를 전달하고, 발행 성공 뒤
+   표시 전에 죽어서 생기는 중복 전달을 허용한다. consumer는 work ID로 DB 상태와
+   선점 가능 여부를 다시 검사한다.
+4. broker 메시지, ack, Celery result backend는 제품 상태의 기준이 아니다.
+   scheduler의 owner 공정성·quota·취소·lease를 우회해 작업을 시작할 수 없다.
+   prefetch는 실제 실행 슬롯보다 크게 잡지 않는다.
+
+Application의 실행 함수는 `execute(claim, execution_spec)` 같은 port 계약을
+사용하며 Celery decorator를 import하지 않는다. Celery를 추가할 경우 task 함수는
+DB 선점과 application 유스케이스를 연결하는 얇은 adapter다. 메시지 재전달만으로
+멱등성이 생기지 않으므로 work ID와 lease token의 fencing을 그대로 유지한다.

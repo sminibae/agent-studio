@@ -1,6 +1,8 @@
 # 배포·접근·운영
 
-서버 배포, 브라우저 로그인, 사용자별 개인 데이터를 제공하며 첫 배포에는 한 사용자를 허용한다. 배포 공급자·도메인은 미정이며 아래 구성은 구현·검증할 운영 설계다.
+서버 배포, 브라우저 로그인, 사용자별 개인 데이터를 제공하며 첫 완성본부터
+allowlist의 복수 사용자를 허용한다. 배포 공급자·도메인은 미정이며 아래 구성은
+구현·검증할 운영 설계다.
 
 ## 첫 배포 구성
 
@@ -20,9 +22,32 @@ PostgreSQL과 사용자별 자산 Git 저장소는 영속 volume을 사용한다
 
 사용자별 가상환경과 dotenv도 별도 영속 영역에 둔다. 개발용 `backend/.venv`와 저장소 `.env`는 API·worker·개발 명령을 위한 고정 환경이며 사용자 실행 환경으로 재사용하지 않는다. [사용자 실행 환경](runtime-environments.md)을 따른다.
 
+## 슈퍼 유저와 계정 경계
+
+이 문서에서 **슈퍼 유저**는 agent-studio를 배포·운영하는 사람을 뜻한다. 다음
+주체는 서로 다른 계정과 권한으로 분리한다.
+
+| 주체 | 역할 | 허용하지 않는 것 |
+| --- | --- | --- |
+| agent-studio 슈퍼 유저 | allowlist, 전역/owner 실행 한도, 배포·백업·긴급 중지 관리 | 일반 사용자 UI를 통한 임의 owner 전환 |
+| app_user | 자기 자산·환경·실행·분석 사용 | 다른 owner 데이터와 실행 환경 접근 |
+| OS 서비스 계정 | API·worker·실행기 프로세스 운영 | 대화형 사용자 로그인과 불필요한 호스트 권한 |
+| PostgreSQL migration role | schema migration | 평상시 API·worker 실행 |
+| PostgreSQL service role | 애플리케이션 쿼리 | PostgreSQL superuser 권한 |
+
+agent-studio 슈퍼 유저라는 이름이 OS root나 PostgreSQL superuser를 뜻하지 않는다.
+일반 사용자가 로그인해도 OS 계정·Docker socket·DB role을 얻지 않는다. 첫 버전의
+운영 기능은 서버 설정과 CLI로 제공할 수 있으며 일반 사용자 화면에 관리자용
+owner 선택기를 추가하지 않는다. allowlist 변경, quota 변경, 환경 강제 중지처럼
+사용자 작업에 영향을 주는 운영 조치는 actor·대상·이유·시각을 감사 기록에 남긴다.
+호스트와 DB 운영자는 기술적으로 저장 데이터에 접근할 수 있으므로 조직의 운영자
+접근 정책과 백업 권한으로 통제한다.
+
 ## 로그인 기본안
 
-Google OIDC + OAuth2 Proxy를 기본 후보로 둔다. 첫 배포에는 운영자가 지정한 한 계정만 allowlist로 허용한다. 로그인 provider의 최종 선택은 사용자 계정 환경을 확인한 뒤 설정한다. 앱 자체의 비밀번호 가입/재설정은 제공하지 않는다.
+Google OIDC + OAuth2 Proxy를 기본 후보로 둔다. 운영자가 지정한 계정들만
+allowlist로 허용한다. 로그인 provider의 최종 선택은 사용자 계정 환경을 확인한 뒤
+설정한다. 앱 자체의 비밀번호 가입/재설정은 제공하지 않는다.
 
 OAuth2 Proxy의 Google 연결과 이메일 허용 목록을 활용하고 Caddy가 인증 precheck를 수행하는 구성이 가능하다. [Google provider](https://oauth2-proxy.github.io/oauth2-proxy/configuration/providers/google/), [이메일 허용 설정](https://oauth2-proxy.github.io/oauth2-proxy/7.6.x/configuration/providers/), [Caddy forward_auth](https://caddyserver.com/docs/caddyfile/directives/forward_auth)
 
@@ -49,13 +74,16 @@ OAuth2 Proxy의 Google 연결과 이메일 허용 목록을 활용하고 Caddy�
 - 사용자가 작성한 Tool 원문·Version·검증 결과·실행 결과는 개인 자산이다. 다른
   사용자의 Tool 이름·원문·schema·오류를 조회하거나 자신의 Setup에 연결할 수 없다.
 
-현재 허용 사용자는 한 명이어도 테스트에는 두 명을 만들어 API·DB·worker·Analytics 격리를 검증한다. 초대·공유·권한 등급·사용자 간 자산 이동 UI는 첫 범위에 넣지 않는다.
+최소 두 계정으로 API·DB·worker·환경·Analytics 격리와 동시 실행을 검증한다.
+초대·공유·권한 등급·사용자 간 자산 이동 UI는 첫 범위에 넣지 않는다.
 
 ## 비밀과 사용량
 
 첫 사용자 OpenAI credential은 사용자가 소유한 dotenv 파일에 `OPENAI_API_KEY`로 둔다. DB에는 파일 참조와 revision만 저장한다. API/worker의 DB·proxy credential은 별도 서비스 `.env`에 둔다. 사용자 Python은 선택한 자기 dotenv의 값을 읽을 수 있다. prompt/도구 결과/오류/로그에 키가 남지 않도록 경계를 둔다. 브라우저에는 저장된 provider key를 다시 보내지 않는다.
 
-향후 두 번째 사용자를 허용하기 전에는 owner별 실행 프로세스와 dotenv·패키지·과금 격리를 검증한다. 첫 배포에도 사용자별 dotenv 관리 UI를 제공한다. 각자의 provider key와 과금 주체를 사용하며 다른 owner의 파일을 선택하거나 읽을 수 없어야 한다.
+첫 다중 사용자 배포 전에 owner별 실행 프로세스와 dotenv·패키지·과금 격리를
+검증한다. 사용자별 dotenv 관리 UI를 제공하고 각자의 provider key와 과금 주체를
+사용한다. 다른 owner의 파일을 선택하거나 읽을 수 없어야 한다.
 
 사용자 Tool 함수도 신뢰하지 않는 사용자 Python 자산으로 취급한다. decorator는
 sandbox가 아니므로 별도 실행 환경에서 처리한다. 웹·DB credential과 다른 사용자
