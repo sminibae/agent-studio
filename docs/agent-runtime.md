@@ -47,6 +47,7 @@ Agent와 Judge의 실제 SDK 호출은 각 Setup이 선택한 사용자 가상�
 - Experiment 반복·DB 작업 선점·재시도 저장·권한·평가·Analytics는 제품이 소유한다.
 - SDK의 도구 호출/agent loop 기능을 우선 사용한다. 같은 loop를 따로 구현해 SDK와 이중 관리하지 않는다.
 - SDK 기본 동작이 [execution.md](execution.md)의 정책과 다르면 설정/얇은 adapter로 맞출 수 있는지 검증한다. 맞지 않으면 실행 계약 또는 runtime adapter를 조정한다.
+- 첫 실행 정책의 순차 도구 호출에는 provider의 `parallel_tool_calls=False`와 SDK의 로컬 도구 동시 실행 상한 1을 함께 적용한다. 두 설정이 별개임을 고정 버전의 fake model에서 확인했다.
 - SDK에는 DB session·HTTP request를 넘기지 않는다. Tool context에는 필요한 HTTP client 등 명시적 런타임 의존성만 주입한다. credential은 선택한 사용자 dotenv에서 주입된 프로세스 환경으로 해석한다.
 - Agent와 Judge는 별도 호출/기록이다. Judge에는 도구 실행 권한을 주지 않는다. Judge 입력은 Case 입력, Final Answer, 필요한 Agent Trace/도구 결과, Golden, Rubric이다.
 
