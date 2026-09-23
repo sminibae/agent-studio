@@ -5,7 +5,10 @@
 ## 편집기와 결과 계약
 
 - 자산 내용은 `.py` 코드 편집기에서 작성한다. 함수, 조건문, 반복문, 문자열 조합 등 기본 Python을 사용할 수 있다.
-- 편집기 상단에 서비스가 읽는 변수와 결과 타입을 안내한다. Prompt는 `system_prompt: str`, Rubric은 `items: list[dict]`이며 항목에 `key`, `description`, `min_score`, `max_score`가 필요하다.
+- 편집기 상단에 서비스가 읽는 변수와 결과 타입을 안내한다. Prompt는
+  `system_prompt: str`, Tool은 `tool` 변수에 담긴 지원 callable/SDK Tool 객체,
+  Rubric은 `items: list[dict]`이며 항목에 `key`, `description`, `min_score`,
+  `max_score`가 필요하다.
 - 저장은 새 자산 Version 발행이다. 사용자는 Git 명령을 입력하지 않고 서비스가 commit과 DB 등록을 처리한다.
 - 원문 보기·버전 간 차이 비교는 각 Version이 참조하는 Git 원문을 사용한다.
 - 미리보기는 코드를 실행해 실제 문자열·구조화된 값을 보여준다. 미리보기 결과를 이후 실행의 값으로 고정하지 않는다.
@@ -78,6 +81,10 @@ Git은 특정 commit의 파일을 작업 폴더 변경 없이 읽을 수 있다.
 
 Version은 원문과 결과 계약을 고정한다. 같은 Version도 시간·난수 등에 따라 다른 값을 만들 수 있다. Setup은 Version 참조를 고정하며, 실제 생성된 값은 Case Run 또는 Evaluation의 실행 기록으로 보존한다.
 
+각 실행 Python 자산 Version은 발행·검증에 사용한 venv revision을 고정한다.
+Agent/Evaluation Setup에는 같은 revision의 자산만 조립한다. 다른 환경에서 같은
+원문을 사용하려면 대상 환경에서 새 Version으로 검증·발행한다.
+
 Agent Prompt는 각 Case Run의 Agent 조립 직전에 한 번 평가한다. 같은 Case Run의 모델 왕복과 개별 호출 retry는 이미 생성한 값을 사용한다. 다른 Case Run과 새 Batch에서는 다시 계산한다. 매 모델 호출마다 Prompt를 갱신하는 기능은 첫 범위에 포함하지 않는다.
 
 Judge Prompt·Rubric은 Evaluation 시작 때 해석하고, 해당 작업의 Judge 호출·응답 검증·점수 계산에서 같은 결과를 사용한다. 나머지 자산의 정확한 실행 시점과 관계 선언 계약은 구현 전 확인 항목이다.
@@ -101,9 +108,11 @@ Judge Prompt·Rubric은 Evaluation 시작 때 해석하고, 해당 작업의 Jud
 
 ## 구현 전 확인 항목
 
-- Prompt/Rubric 외 자산의 결과 변수·타입, 주입 입력, 실행 단위.
+- Prompt/Rubric 외 자산의 결과 변수·타입, 주입 입력, 실행 단위. Tool은 `tool`
+  변수의 객체 추출, schema 생성, async/sync 호출과 결과 직렬화 계약을 포함한다.
 - Dataset 멤버, Golden 대응, Tool 구현 참조처럼 실행 등록 전에 필요한 관계의 선언·검증 계약. 실행 중 관계 변경으로 기존 슬롯·FK를 무효화하지 않는다.
 - 동적으로 생성되는 Rubric/Scoring/Judge 설정의 비교 가능성. 같은 Version/Setup ID만으로 실제 평가 조건이 같다고 판단하지 않는다.
 - 사용자 가상환경·dotenv를 별도 프로세스에 전달하는 기술, 타 owner 접근 차단, 자원·네트워크 제한 값.
 - 저장소 잠금·발행 복구·백업 구현과 실제 파일·Git·DB 장애 검증.
-- 도구 함수 구현 자체의 웹 편집 범위. 배포 도구 registry의 계약은 [agent-runtime.md](agent-runtime.md)를 따른다.
+- 사용자 Tool의 네트워크·파일·credential 허용 정책과 격리 호출 계약은
+  [agent-runtime.md](agent-runtime.md)와 [runtime-environments.md](runtime-environments.md)를 따른다.

@@ -46,7 +46,8 @@ OAuth2 Proxy의 Google 연결과 이메일 허용 목록을 활용하고 Caddy�
 - 다른 사용자의 ID는 404로 처리하며 존재/이름/오류 상세를 누설하지 않는다.
 - 같은 요청에서 연결하는 Dataset/Golden/Setup/Run도 모두 같은 owner여야 한다. DB composite FK로 교차 소유자 연결을 차단한다.
 - worker는 Batch의 고정 owner 범위로만 읽고 쓴다. Analytics의 여러 Run 선택도 같은 사용자 범위를 벗어날 수 없다.
-- 배포된 Python 도구 구현 catalog는 서비스 관리자가 제공하는 read-only 자원이다. 개인 Tool Definition/Description/실행 결과는 각 사용자 소유다.
+- 사용자가 작성한 Tool 원문·Version·검증 결과·실행 결과는 개인 자산이다. 다른
+  사용자의 Tool 이름·원문·schema·오류를 조회하거나 자신의 Setup에 연결할 수 없다.
 
 현재 허용 사용자는 한 명이어도 테스트에는 두 명을 만들어 API·DB·worker·Analytics 격리를 검증한다. 초대·공유·권한 등급·사용자 간 자산 이동 UI는 첫 범위에 넣지 않는다.
 
@@ -56,7 +57,12 @@ OAuth2 Proxy의 Google 연결과 이메일 허용 목록을 활용하고 Caddy�
 
 향후 두 번째 사용자를 허용하기 전에는 owner별 실행 프로세스와 dotenv·패키지·과금 격리를 검증한다. 첫 배포에도 사용자별 dotenv 관리 UI를 제공한다. 각자의 provider key와 과금 주체를 사용하며 다른 owner의 파일을 선택하거나 읽을 수 없어야 한다.
 
-도구 코드는 운영자가 검토하여 artifact에 포함한다. Python 함수는 trusted code이며 decorator가 sandbox를 제공하지 않는다. 사용자 Python 자산은 별도 실행 환경에서 실행한다. 웹·DB credential과 다른 사용자 파일에 접근하지 못하도록 하고 시간·메모리·출력·파일/네트워크 접근 정책을 적용한다. 선택한 자기 dotenv의 provider credential에는 접근할 수 있다. 격리 기술은 [runtime-environments.md](runtime-environments.md)의 구현 전 검증 항목이다.
+사용자 Tool 함수도 신뢰하지 않는 사용자 Python 자산으로 취급한다. decorator는
+sandbox가 아니므로 별도 실행 환경에서 처리한다. 웹·DB credential과 다른 사용자
+파일에 접근하지 못하도록 하고 시간·메모리·출력·파일/네트워크 접근 정책을
+적용한다. 선택한 자기 dotenv의 provider·도구 credential에는 접근할 수 있다.
+격리 기술은 [runtime-environments.md](runtime-environments.md)의 구현 전 검증
+항목이다.
 
 ## 배포·복구 기본안
 

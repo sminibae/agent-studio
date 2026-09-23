@@ -12,7 +12,7 @@
 | 자산 | 독립 Definition/Version 재사용, Python 코드 편집기와 결과 변수 계약 | [domain-model.md](domain-model.md), [python-assets.md](python-assets.md) |
 | 원문 저장 | 서버 일반 폴더와 Git 형상관리, DB Version의 저장소·commit·경로 참조 | [python-assets.md](python-assets.md), [data-model.md](data-model.md) |
 | Python 실행 | 실행 시 코드 평가, 실제 생성된 값 보존, 격리된 실행 환경 | [python-assets.md](python-assets.md) |
-| 실행 환경 | 개발용 `.venv`·`.env`는 고정; 사용자는 이름을 붙인 자기 `.venv`·`.env`를 Setup에서 선택 | [runtime-environments.md](runtime-environments.md) |
+| 실행 환경 | 개발 환경과 분리; Setup은 사용자 venv revision을 고정하고 실행 시 override 금지 | [runtime-environments.md](runtime-environments.md) |
 | 실행 구성 | Setup/Experiment의 참조 고정, 변경은 복제로 새 구성 생성 | [domain-model.md](domain-model.md) |
 | 실행 이력 | Execution Batch, Run, Case Run과 Trace; 평가 작업은 별도 상태 | [execution.md](execution.md) |
 | 첫 사례 | OpenAI와 Python decorator 도구를 사용하는 날씨 HTTP Agent | [agent-runtime.md](agent-runtime.md) |
@@ -39,7 +39,7 @@
 | 사용자 환경 실행과 격리 | 자산 실행기 구현 전 | 사용자별 venv·dotenv 선택, 서비스/타 사용자 credential·파일 차단, timeout·메모리·출력 제한 |
 | Git 발행·복구·백업 구현 | 자산 저장과 운영 기능 | 동시 저장, Git 성공 후 DB 실패, 보존 참조, 과거 Version 복원 |
 | 동적 평가 조건의 호환 판정 | 평가·비교 기능 구현 전 | 실제 Judge/Rubric/Scoring 결과와 입력 조건 |
-| 도구 함수 구현의 웹 편집 범위 | 도구 편집 기능 확장 전 | 배포 registry와 사용자 실행 코드의 책임 경계 |
+| 사용자 Tool 실행 계약 | Tool 편집 기능 구현 전 | 지정 변수의 객체 추출, schema 검증, 격리 실행과 네트워크 정책 |
 | Agent SDK를 포함한 후속 패키지 버전 | 실행 기술 검증 | SDK 호환성, 깨끗한 설치와 CI |
 | 인덱스·집계 캐시·Trace 외부 저장 | 첫 부하 측정 | EXPLAIN, 응답시간, DB/Trace 크기 |
 | 여러 worker·외부 큐 | 동시 실행량 검증 | 점유 경쟁, 처리량, 운영 복잡도 |

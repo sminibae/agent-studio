@@ -72,7 +72,9 @@ SQLite로 PostgreSQL 테스트를 대체하지 않는다. fake repository만으�
 | 5 | Setup A/B 비교, Cases와 Trace, Repeats | 퇴행 Case를 찾아 양쪽 Trace까지 이동 |
 | 6 | 8 Scope 검증, 복구·배포·운영 점검 | 첫 완성본 인수 시나리오 통과 |
 
-Provider/tool은 OpenAI와 등록된 날씨 HTTP 도구를 사용하고, 본 런타임 구현 전에 [agent-runtime.md](agent-runtime.md)의 SDK compatibility spike를 마친다. 채점 정책은 analytics의 검산 예시를 테스트로 고정한다. UI 범위와 배포 조건에 맞춰 구현 단위와 인수 기준을 유지한다.
+Provider/tool은 OpenAI와 사용자가 작성한 날씨 HTTP Tool을 사용하고, 본 런타임
+구현 전에 [agent-runtime.md](agent-runtime.md)의 SDK compatibility spike를 마친다.
+채점 정책은 analytics의 검산 예시를 테스트로 고정한다. UI 범위와 배포 조건에 맞춰 구현 단위와 인수 기준을 유지한다.
 
 단계 1에 코드 편집기·Git commit과 DB Version 발행·owner별 원문 조회, 이름 붙인 사용자 가상환경·dotenv 관리와 Setup 선택을 포함하고, 단계 2 전에 선택 환경 실행과 격리·결과 기록을 검증한다. 동시 저장 시 변경 혼입 방지, Git 성공 후 DB 실패·응답 유실, 작업 폴더가 바뀐 뒤 과거 commit 조회, 보존 참조·Git 정리 후 과거 Version 유지, DB와 Git 저장소의 복원을 확인한다. 실행 검증에는 저장/실행 시각이 다른 Prompt, Case Run별 재계산과 호출 retry의 값 유지, 결과 타입 오류·timeout, commit/파일 누락과 hash 불일치를 포함한다. 단계 4~5 전에 동적 평가 설정과 비교 계약을 정한다. 미정 항목은 [python-assets.md](python-assets.md)를 따른다.
 
@@ -90,6 +92,12 @@ Provider/tool은 OpenAI와 등록된 날씨 HTTP 도구를 사용하고, 본 런
 8. 별도 실행에서 provider 실패, Judge 실패, 취소, worker 중단을 주입해 상태·분모·재기동 후 조회를 확인한다.
 
 실제 모델/도구 smoke는 별도 사례로 수행한다. 백업에서 복원한 DB의 Setup·실행·Trace 조회까지 배포 조건에 맞춰 확인한다.
+
+추가 인수 사례로 Tool `.py`의 지정 변수 누락·잘못된 객체·schema 추출 실패를
+발행 단계에서 거부하고, 임의 사용자 함수가 선택 venv의 패키지로 실행되는지
+확인한다. Setup의 venv revision과 다른 자산 연결 및 실행 환경 override를
+거부한다. 환경이 다른 두 실행은 각각 조회할 수 있지만 비교 API는
+`environment_mismatch`로 거부해야 한다.
 
 ## 언어와 코드 규칙
 

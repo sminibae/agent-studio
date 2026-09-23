@@ -22,6 +22,7 @@ Agent Setup은 다음 항목으로 구성된다.
 - Model
 - Tool Set과 Tool Description
 - Agent Runtime Parameters
+- 고정된 Execution Environment와 venv revision
 
 Evaluation Setup은 다음 항목으로 구성된다.
 
@@ -33,6 +34,9 @@ Evaluation Setup은 다음 항목으로 구성된다.
 - 점수 합산 방식인 Scoring Rule
 
 Setup은 생성 후 변경되지 않는다. 화면에서 기존 Setup을 수정하는 동작은 해당 Setup을 복제한 뒤 새 Setup을 만드는 방식으로 제공한다.
+
+다른 venv에서 실행하려면 자산을 해당 환경에서 새 Version으로 검증하고 Setup을
+복제한다. venv revision이 다른 실행끼리는 비교하지 않는다.
 
 ### Experiments
 
