@@ -1,11 +1,11 @@
 # 02 실행 기술 검증
 
 상태: 진행 중. spike 코드는 `dev`에 병합됐지만 제품 실행기 합격을 뜻하지 않는다.
-2026-09-23 재개 기준 다음 작업은 **02-1**이다.
+2026-09-23 재개 기준 02-1을 완료했고 다음 작업은 **02-2**다.
 
 ## 남은 구현 순서
 
-- [ ] **02-1 선택 venv의 SDK 실행** — 기존 container smoke를 확장해 Linux에서
+- [x] **02-1 선택 venv의 SDK 실행** — 기존 container smoke를 확장해 Linux에서
   만든 고정 venv revision에 SDK/runner를 설치·검사한다. 읽기 전용 환경에서
   동적 Prompt → fake model → 사용자 Tool → Final Answer를 실행하고 중립 DTO를
   반환한다. 먼저 credential·네트워크가 필요 없는 최소 사례를 완성한다.
@@ -105,3 +105,13 @@ Prompt를 평가했다. 실행 컨테이너에는 `.git`/타 owner 파일을 mou
 Desktop에서 통과했다. 이는 파일 mount·네트워크 차단의 작은 검증이다. 실제
 SDK 호출에 필요한 제한 네트워크, 메모리/출력 상한의 실패 분류, 강제 종료 뒤
 잔여 프로세스, Linux/CI 재현은 아직 확인하지 않았다.
+
+`bash backend/spikes/container_sdk_environment_smoke.sh`는 별도의 설치 컨테이너에서
+Linux venv revision을 만들고 `openai-agents==0.22.2`를 설치한 뒤, 실행 단계에는
+그 venv를 읽기 전용으로 mount하고 네트워크를 끈다. 선택 dotenv로 동적으로 만든
+Prompt와 사용자 `.py`의 `tool` 객체를 SDK `ScriptedModel`로 실제 호출해 Final
+Answer·로컬 model/tool event·schema를 JSON DTO로 반환했다. SDK 미설치에는
+`sdk_unavailable`, 저장 schema 불일치에는 `tool_schema_mismatch`를 반환했으며,
+각 `--rm` 컨테이너가 종료 뒤 남지 않음을 확인했다. 이 smoke는 02-1의 최소 실행
+경계를 통과하지만 설치 의존성 전체 고정, 악성 코드의 자원/파일/프로세스 공격,
+허용 네트워크와 Linux CI 재현까지 증명하지 않는다.
