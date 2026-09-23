@@ -43,7 +43,10 @@
 
 ## 설계 요약
 
-서버에서 브라우저로 접근하고 사용자별 개인 데이터를 관리한다. 첫 배포는 한 계정이며, 플랫폼 내 Agent 조합·실행, Python decorator 도구, 날씨 HTTP 예제, OpenAI, 독립 자산/Version 재사용을 제공한다. Python export는 후속 기능이다.
+서버에서 브라우저로 접근하고 사용자별 개인 데이터를 관리한다. 첫 완성본부터
+allowlist에 등록된 복수 계정의 동시 사용을 지원하며, 플랫폼 내 Agent 조합·실행,
+Python decorator 도구, 날씨 HTTP 예제, OpenAI, 독립 자산/Version 재사용을
+제공한다. Python export는 후속 기능이다.
 
 자산은 Python 편집기로 작성하고 실행 시 약속된 변수 값을 읽는다. 원문은 서버의 일반 폴더에 저장하고 Git으로 형상관리한다. DB의 Version은 저장소 ID·commit ID·파일 경로를 참조한다. 편집·발행·실행 규칙은 [python-assets.md](python-assets.md)를 따른다.
 

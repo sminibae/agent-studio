@@ -8,7 +8,7 @@
 | 항목 | 설계 | 담당 문서 |
 | --- | --- | --- |
 | 제품 | 브라우저에서 Agent 구성·실행·평가·비교를 수행하는 개발자 도구 | [product.md](product.md) |
-| 접근 | 사용자별 개인 데이터, 첫 배포 허용 계정 1명 | [operations.md](operations.md) |
+| 접근 | allowlist의 복수 계정 동시 사용, 사용자별 데이터·환경 격리 | [operations.md](operations.md) |
 | 자산 | 독립 Definition/Version 재사용, Python 코드 편집기와 결과 변수 계약 | [domain-model.md](domain-model.md), [python-assets.md](python-assets.md) |
 | 원문 저장 | 서버 일반 폴더와 Git 형상관리, DB Version의 저장소·commit·경로 참조 | [python-assets.md](python-assets.md), [data-model.md](data-model.md) |
 | Python 실행 | 실행 시 코드 평가, 실제 생성된 값 보존, 격리된 실행 환경 | [python-assets.md](python-assets.md) |
@@ -30,6 +30,7 @@
 | 채점 | LLM Judge + 정규화 가중 평균 | 응답 검증, 실패/미평가 구분, 점수 검산 |
 | 실행량 | 100 Cases × 10 Repeats, 전체 4개·owner별 2개 실행 예약 | 실제 provider 제한, 호스트 자원·부하와 저장 용량 |
 | 작업 대기열 | PostgreSQL 기반 owner 순환 점유와 lease·컨테이너 예약 | 동시 점유, 공정성, heartbeat, worker 중단·정리와 늦은 쓰기 차단; [scheduling.md](scheduling.md) |
+| Queue 확장 | PostgreSQL polling → 필요 시 Redis wake-up → 다중 서버 운영 시 broker/outbox 검토 | DB 상태 기준과 scheduler 정책을 유지; [scheduling.md](scheduling.md) |
 
 ## 구현 전 확인 항목
 
@@ -47,4 +48,8 @@
 | 다중 Agent·재평가·외부 수집 | 첫 완성본 이후 | 실제 사용 사례 |
 | 로그인 provider·도메인·서버 | 배포 준비 | 계정 환경과 [operations.md](operations.md)의 인수 기준 |
 | 보존 기간·영구 삭제 | 실제 데이터 반입 전 | 데이터 성격, Git 이력의 원문 제거, 운영 목적 |
-| 추가 사용자의 provider 과금·격리 | 계정 추가 전 | 각자의 dotenv credential과 과금 주체, owner별 실행 격리 검증 |
+| 사용자별 provider 과금·격리 | 첫 다중 사용자 배포 전 | 각자의 dotenv credential과 과금 주체, owner별 실행 격리 검증 |
+
+agent-studio 슈퍼 유저는 배포·allowlist·quota·백업을 관리하는 운영 주체다. OS
+root, PostgreSQL superuser, 일반 app_user와 동일한 계정이나 권한으로 취급하지
+않는다. 구체 경계는 [operations.md](operations.md)를 따른다.
