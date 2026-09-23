@@ -9,7 +9,7 @@
   만든 고정 venv revision에 SDK/runner를 설치·검사한다. 읽기 전용 환경에서
   동적 Prompt → fake model → 사용자 Tool → Final Answer를 실행하고 중립 DTO를
   반환한다. 먼저 credential·네트워크가 필요 없는 최소 사례를 완성한다.
-- [ ] **02-2 사용자 Tool 계약** — `.py`의 `tool` 변수에서 지원 callable/SDK Tool을
+- [x] **02-2 사용자 Tool 계약** — `.py`의 `tool` 변수에서 지원 callable/SDK Tool을
   추출하고 schema snapshot 생성·재실행 일치·description 격리를 검증한다.
   변수 누락/지원하지 않는 객체/schema drift를 거부한다. 기존 허용 factory
   registry는 실험용 증거이며 사용자 함수를 대체하는 제품 registry가 아니다.
@@ -82,8 +82,8 @@ typed decorator에서 숫자 schema가 생성되고, 동시에 실행한 두 Age
 
 | SDK 합격 기준 | 현재 상태 |
 | --- | --- |
-| 1. schema → registry 등록/복원 | 기존 JSON manifest/허용 factory 복원·unknown key/schema drift 거부 통과; 최신 사용자 `.py`의 `tool` 추출/복원 계약은 미검증, 실제 Version DB·digest 검증은 03 |
-| 2. Description 동시 격리 | fake model에서 통과 |
+| 1. schema → registry 등록/복원 | 사용자 `.py`의 sync/async 함수와 SDK `FunctionTool` 추출, JSON snapshot 재평가 일치와 drift 거부 통과; 실제 Version DB·digest 검증은 03 |
+| 2. Description 동시 격리 | fake model과 같은 원문의 두 container Setup 동시 실행에서 통과 |
 | 3. unknown/invalid/exception/turn | SDK 오류 동작과 명시적 실패 설정 통과; 제품 상태·Trace 변환 미검증 |
 | 4. retry/parallel/attempt/usage | runner retry 정책·시도 수, provider parallel 설정 전달, 로컬 도구 동시 실행 상한 1/2, 성공 응답 usage hook 관찰; 실패 attempt 영속 기록 미검증 |
 | 5. 취소/deadline/heartbeat | async 도구 중 취소 후 새 모델 호출 없음·event loop heartbeat 통과; deadline·블로킹 sync 도구 미검증 |
@@ -115,3 +115,14 @@ Answer·로컬 model/tool event·schema를 JSON DTO로 반환했다. SDK 미설�
 각 `--rm` 컨테이너가 종료 뒤 남지 않음을 확인했다. 이 smoke는 02-1의 최소 실행
 경계를 통과하지만 설치 의존성 전체 고정, 악성 코드의 자원/파일/프로세스 공격,
 허용 네트워크와 Linux CI 재현까지 증명하지 않는다.
+
+02-2에서는 `.py`의 `tool` 변수로 지정한 sync/async 함수와 SDK `FunctionTool`을
+허용하고, 누락·비호출 객체·지원하지 않는 callable 객체를 안정된 오류로 분류했다.
+함수 signature·annotation·docstring에서 생성한 이름·description·입력 schema를
+JSON snapshot으로 저장하고 같은 원문 재평가 결과 전체가 일치해야 한다. Setup별
+description은 검증된 Version Tool을 변경하지 않고 실행 직전에 새 인스턴스에
+적용한다. 단위 테스트와 container smoke에서 schema/description drift 거부 및 같은
+원문의 두 Setup 동시 실행 description 격리가 통과했다. 재현 명령은
+`backend/.venv/bin/pytest backend/tests/test_user_tool_contract_spike.py -q`와
+`bash backend/spikes/container_sdk_environment_smoke.sh`다. 임의 callable 객체와
+다른 SDK Tool 종류는 현재 지원하지 않는다.
