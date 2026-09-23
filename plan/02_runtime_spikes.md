@@ -1,5 +1,42 @@
 # 02 실행 기술 검증
 
+상태: 진행 중. spike 코드는 `dev`에 병합됐지만 제품 실행기 합격을 뜻하지 않는다.
+2026-09-23 재개 기준 다음 작업은 **02-1**이다.
+
+## 남은 구현 순서
+
+- [ ] **02-1 선택 venv의 SDK 실행** — 기존 container smoke를 확장해 Linux에서
+  만든 고정 venv revision에 SDK/runner를 설치·검사한다. 읽기 전용 환경에서
+  동적 Prompt → fake model → 사용자 Tool → Final Answer를 실행하고 중립 DTO를
+  반환한다. 먼저 credential·네트워크가 필요 없는 최소 사례를 완성한다.
+- [ ] **02-2 사용자 Tool 계약** — `.py`의 `tool` 변수에서 지원 callable/SDK Tool을
+  추출하고 schema snapshot 생성·재실행 일치·description 격리를 검증한다.
+  변수 누락/지원하지 않는 객체/schema drift를 거부한다. 기존 허용 factory
+  registry는 실험용 증거이며 사용자 함수를 대체하는 제품 registry가 아니다.
+- [ ] **02-3 격리·종료 공격 테스트** — 두 owner의 파일/환경 분리, 서비스 credential·
+  Git·Docker socket 차단, timeout·메모리·PID·출력 상한, 자식 프로세스와 컨테이너
+  정리 실패를 검증한다. 설치 작업의 새 revision과 Agent/Judge 별도 환경,
+  dotenv 회전도 확인한다. 허용 endpoint만 통과하는 네트워크 경로를 검증한다.
+- [ ] **02-4 SDK 실패·이벤트 계약** — deadline·블로킹 sync 도구 처리 정책,
+  실패 attempt/usage·취소 후 신규 호출 차단·비밀 제거·Trace 크기 제한을 fixture로
+  고정한다. 제품 상태/이벤트 DTO와 incremental sink 계약을 정한다.
+- [ ] **02-5 HTTP와 Linux 재현** — 날씨 HTTP adapter를 fake HTTP로 검증하고
+  Linux/CI에서도 격리 하네스를 재현한다. 명령·실행 환경·관찰 결과·남은 차이를
+  아래 표에 갱신하고 03 착수 여부를 판정한다.
+
+## 단계 종료와 후속 검증의 경계
+
+02는 격리 실행과 SDK 계약의 합격을 증명하는 단계다. 일곱 기준에 미검증이라고
+적기만 해서는 종료할 수 없다. 사용자 코드/환경 격리·종료, 사용자 Tool 추출과
+복원, 오류·이벤트 수집은 하네스에서 합격해야 한다. 격리 실패가 남으면 03의
+사용자 코드 실행 기능으로 진행하지 않는다.
+
+제품 저장 계층이 필요한 검증은 담당 단계에 이어 붙인다. 실제 Git/DB Tool Version
+발행·digest 검증은 [03](03_assets_and_setups.md), lease·슬롯 정리와 제품 DB
+Trace/attempt 영속화는 [04](04_experiment_execution.md), 실제 OpenAI/날씨 호출은
+[05](05_live_agent.md)에서 완료한다. 02에서는 fake event sink로 실패/취소 중에도
+점진 기록할 수 있는지 확인하고, 실제 DB 영속화를 완료했다고 표시하지 않는다.
+
 ## 목표와 범위
 
 제품 테이블/UI보다 먼저 두 경계를 실행 가능한 하네스로 검증한다.
@@ -45,7 +82,7 @@ typed decorator에서 숫자 schema가 생성되고, 동시에 실행한 두 Age
 
 | SDK 합격 기준 | 현재 상태 |
 | --- | --- |
-| 1. schema → registry 등록/복원 | JSON manifest와 허용 factory registry 복원, unknown key/schema drift 거부 통과; 실제 DB·artifact digest 검증 미구현 |
+| 1. schema → registry 등록/복원 | 기존 JSON manifest/허용 factory 복원·unknown key/schema drift 거부 통과; 최신 사용자 `.py`의 `tool` 추출/복원 계약은 미검증, 실제 Version DB·digest 검증은 03 |
 | 2. Description 동시 격리 | fake model에서 통과 |
 | 3. unknown/invalid/exception/turn | SDK 오류 동작과 명시적 실패 설정 통과; 제품 상태·Trace 변환 미검증 |
 | 4. retry/parallel/attempt/usage | runner retry 정책·시도 수, provider parallel 설정 전달, 로컬 도구 동시 실행 상한 1/2, 성공 응답 usage hook 관찰; 실패 attempt 영속 기록 미검증 |
