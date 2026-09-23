@@ -10,18 +10,24 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# ``-I`` intentionally excludes the script directory. The smoke mounts only this
+# prototype package, so add its explicit read-only location rather than user paths.
+sys.path.insert(0, str(Path(__file__).parent))
+
 
 def _write_result(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
 
 
 async def _run(
-    prompt_path: Path, tool_path: Path, expected_schema_path: Path
+    prompt_path: Path,
+    tool_path: Path,
+    expected_contract_path: Path,
+    setup_description: str,
 ) -> dict[str, Any]:
     try:
         from agents import (
             Agent,
-            FunctionTool,
             RunConfig,
             RunContextWrapper,
             RunHooks,
@@ -39,19 +45,27 @@ async def _run(
             return {"error": "sdk_unavailable"}
         raise
 
+    from user_tool_contract import (  # type: ignore[import-not-found]
+        ToolContractError,
+        load_user_tool,
+        verify_snapshot,
+        with_setup_description,
+    )
+
     prompt_namespace = runpy.run_path(str(prompt_path))
     system_prompt = prompt_namespace.get("system_prompt")
     if not isinstance(system_prompt, str):
         return {"error": "invalid_prompt"}
 
-    tool_namespace = runpy.run_path(str(tool_path))
-    tool = tool_namespace.get("tool")
-    if not isinstance(tool, FunctionTool):
-        return {"error": "invalid_tool_object"}
-
-    expected_schema = json.loads(expected_schema_path.read_text(encoding="utf-8"))
-    if tool.params_json_schema != expected_schema:
-        return {"error": "tool_schema_mismatch"}
+    try:
+        version_tool = load_user_tool(tool_path)
+        expected_contract = json.loads(
+            expected_contract_path.read_text(encoding="utf-8")
+        )
+        verify_snapshot(version_tool, expected_contract)
+    except ToolContractError as error:
+        return {"error": str(error)}
+    tool = with_setup_description(version_tool, setup_description)
 
     class LocalEvents(RunHooks[None]):
         def __init__(self) -> None:
@@ -106,17 +120,22 @@ async def _run(
         "final_output": str(result.final_output),
         "sdk_version": importlib.metadata.version("openai-agents"),
         "system_prompt": system_prompt,
+        "tool_description": tool.description,
         "tool_name": tool.name,
         "tool_schema": tool.params_json_schema,
     }
 
 
 def main() -> None:
-    if len(sys.argv) != 5:
-        raise SystemExit("usage: container_sdk_runner.py PROMPT TOOL SCHEMA RESULT")
-    prompt_path, tool_path, schema_path, result_path = map(Path, sys.argv[1:])
+    if len(sys.argv) != 6:
+        raise SystemExit(
+            "usage: container_sdk_runner.py PROMPT TOOL CONTRACT DESCRIPTION RESULT"
+        )
+    prompt_path, tool_path, contract_path = map(Path, sys.argv[1:4])
+    description = sys.argv[4]
+    result_path = Path(sys.argv[5])
     try:
-        payload = asyncio.run(_run(prompt_path, tool_path, schema_path))
+        payload = asyncio.run(_run(prompt_path, tool_path, contract_path, description))
     except BaseException as error:
         payload = {"error": "execution_error", "error_type": type(error).__name__}
     _write_result(result_path, payload)

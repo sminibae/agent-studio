@@ -1,9 +1,10 @@
 # 구현 재개 인계
 
 기준: 2026-09-23. 계획 정리는 `docs/implementation-roadmap`에서 커밋한 뒤
-`dev`에 `--no-ff`로 병합했다. 현재 코드 작업 브랜치는
-`feat/container-sdk-runtime`이다. 02-1의 최소 SDK 실행 smoke는 통과했으며 다음은
-**[02 실행 기술 검증](02_runtime_spikes.md)의 02-2: 사용자 Tool 계약**이다.
+`dev`에 `--no-ff`로 병합했다. 02-1도 `feat/container-sdk-runtime`에서 구현·검증한
+뒤 `dev`에 `--no-ff`로 병합했다. 현재 코드 작업 브랜치는
+`feat/user-tool-contract`이며 다음은 **[02 실행 기술 검증](02_runtime_spikes.md)의
+02-2: 사용자 Tool 계약**이다.
 
 ## 어디까지 했나
 
@@ -50,7 +51,7 @@
 
 ## 다음 구현 세션에서 할 일
 
-1. `git status --short --branch`로 `feat/container-sdk-runtime`과 사용자 변경을
+1. `git status --short --branch`로 `feat/user-tool-contract`과 사용자 변경을
    확인한다. 의존성이 없거나 달라졌으면 `make install`로 lockfile을 복원한다.
 2. 02-2를 진행한다. `tool` 변수 누락, 지원하지 않는 객체, sync/async callable과
    SDK FunctionTool 허용 범위를 테스트로 고정한다. signature·annotation·docstring에서
