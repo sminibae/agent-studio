@@ -23,7 +23,7 @@ app_user
   UNIQUE(auth_issuer, auth_subject)
 ```
 
-아래 테이블 표기에는 반복을 줄이기 위해 생략하지만, **모든 개인 데이터 테이블에 `owner_id NOT NULL FK -> app_user(id)`가 필수**다. 독립 PK를 가진 개인 테이블에는 `(owner_id, id)` UNIQUE를 두고 부모/Version/Setup 등의 개인 데이터 참조는 `(owner_id, referenced_id)` composite FK로 연결한다. membership 테이블도 owner를 포함한 composite PK/FK를 사용한다. `tool_implementation`만 시스템 read-only catalog로 owner가 없다.
+아래 테이블 표기에는 반복을 줄이기 위해 생략하지만, **모든 개인 데이터 테이블에 `owner_id NOT NULL FK -> app_user(id)`가 필수**다. 독립 PK를 가진 개인 테이블에는 `(owner_id, id)` UNIQUE를 두고 부모/Version/Setup 등의 개인 데이터 참조는 `(owner_id, referenced_id)` composite FK로 연결한다. membership 테이블도 owner를 포함한 composite PK/FK를 사용한다.
 
 이 규칙은 Definition/Version, membership, Setup, Experiment, Batch, Run, Case Run, Trace, Evaluation/Result, 모델 호출/응답 모두에 적용한다. `golden_set_version_item`의 Golden/Case 일치 FK에도 owner를 포함한다. 모든 DB 쿼리는 인증된 owner 범위를 요구하며 API body의 owner_id는 거부한다.
 
@@ -75,6 +75,7 @@ asset_repository
 <x>_version
   id, definition_id FK, version_no
   schema_version, <typed contract>
+  venv_revision_id FK nullable       # 실행하는 Python 자산에는 필수
   source_repository_id FK -> asset_repository
   source_commit_id                   # 전체 Git commit ID
   source_path                        # 저장소 내부 상대 경로
@@ -84,7 +85,8 @@ asset_repository
   CHECK(version_no >= 1)
 ```
 
-위 `source_*` 필드는 Python 원문을 가진 Version에 필수다. commit ID는 Git object format을 고려한 text로 저장하고 약식 ID·브랜치 이름을 허용하지 않는다. `source_sha256`은 파일 바이트의 검증값이며 commit ID와 구분한다. 파일 경로는 저장소 내부 일반 `.py` 파일로 제한한다.
+위 `source_*`와 `venv_revision_id` 필드는 Python 원문을 실행하는 Version에 필수다.
+commit ID는 Git object format을 고려한 text로 저장하고 약식 ID·브랜치 이름을 허용하지 않는다. `source_sha256`은 파일 바이트의 검증값이며 commit ID와 구분한다. 파일 경로는 저장소 내부 일반 `.py` 파일로 제한한다.
 
 Git commit과 보존 참조를 먼저 생성한 뒤, DB에서 Definition 행 잠금 → 예상 current version 확인 → 새 Version INSERT → 포인터 갱신을 한 트랜잭션으로 한다. 동시에 같은 기반 Version에서 수정하면 한 요청은 conflict로 반환한다. 이름은 조회용이며 ID를 대신하지 않는다. 활성 Definition 이름 중복 제한은 종류별로 적용한다.
 
@@ -111,32 +113,25 @@ scoring_rule_definition / scoring_rule_version
 - `golden_set_version_item(golden_set_version_id, golden_version_id, test_case_version_id)`: Set/Case unique, Golden/Case 일치 composite FK.
 - Rubric/Scoring Rule Version은 Python 원문과 결과 schema를 참조한다. 실행 시 생성한 Rubric의 key/min/max/기준과 Scoring Rule의 method/weight/threshold는 Evaluation에 연결한 실행 결과로 보존한다. 개별 판정 점수는 JSONB가 아닌 result 컬럼에 둔다.
 
-## Python 도구 구현과 모델 노출 정보
+## 사용자 Python Tool Version
 
-개발자가 작성·배포한 도구 코드와 화면에서 편집하는 모델용 설명을 분리한다.
+Tool도 다른 Python 자산처럼 사용자가 원문을 작성하고 새 Version으로 발행한다.
 
 ```text
-tool_implementation
-  id
-  registry_key                        # 예: weather.get_current_weather
-  artifact_digest                     # 코드와 의존성을 식별하는 배포 artifact
-  entrypoint                          # 허용된 registry 내부 symbol
-  input_schema, output_contract       # schema_version 포함
-  credential_refs                     # 비밀 값 아님
-  created_at
-  UNIQUE(registry_key, artifact_digest)
-
 tool_version
   id, definition_id, version_no
-  implementation_id FK -> tool_implementation
+  source_repository_id, source_commit_id, source_path, source_sha256
+  venv_revision_id FK
   exposed_name, description
-  input_schema_snapshot, schema_version
+  input_schema_snapshot, output_contract, schema_version
   created_at
 ```
 
-스키마 snapshot은 실제 구현 계약과 같아야 한다. 화면에서 함수 인자 타입을 마음대로 바꾸지 않는다. Description만 바꾼 Version은 동일 implementation을 참조할 수 있다. 구현 변경은 새 artifact/implementation을 등록하며 과거 참조를 바꾸지 않는다.
-
-최초 버전은 현재 배포에 포함된 구현만 실행할 수 있다. 과거 artifact가 없으면 `implementation_unavailable`로 거부하며 최신 함수로 조용히 대체하지 않는다. 과거 이력 조회는 가능하다. 오래된 코드 artifact를 실행하는 격리 worker/배포 전략은 후속 export/재실행 요구에 따라 추가한다.
+발행 시 고정 venv revision에서 원문을 실행하여 지정 변수 `tool`을 읽고 함수
+signature·annotation·docstring에서 schema를 추출한다. 검증된 snapshot과 원문
+참조를 함께 고정한다. 함수 본문·Description·signature·의존 환경을 바꾸면 새
+Tool Version이다. 실행 시 원문과 schema가 일치하지 않으면
+`tool_contract_mismatch`로 실패하며 최신 Version으로 대체하지 않는다.
 
 ## 사용자 실행 환경
 
@@ -145,8 +140,13 @@ tool_version
 
 ```text
 user_venv
-  id, owner_id FK, name, python_version, status, created_at
+  id, owner_id FK, name, current_revision_id, created_at
   UNIQUE(owner_id, name)
+
+user_venv_revision
+  id, owner_id, venv_id FK, revision_no
+  python_version, package_lock_ref, package_digest, status, created_at
+  UNIQUE(venv_id, revision_no)
 
 user_env_file
   id, owner_id FK, name, current_revision_id, created_at
@@ -157,7 +157,7 @@ user_env_revision
   # 실제 dotenv 파일은 owner별 비밀 저장 위치에 보관; DB에 key/value 없음
 
 execution_environment
-  id, owner_id FK, name, venv_id FK, env_file_id FK, created_at, archived_at
+  id, owner_id FK, name, venv_revision_id FK, env_file_id FK, created_at, archived_at
   UNIQUE(owner_id, name)
 
 agent_setup.execution_environment_id FK -> execution_environment
@@ -167,8 +167,9 @@ evaluation_setup.execution_environment_id FK -> execution_environment
 각 참조는 `(owner_id, id)` composite FK로 교차 owner 연결을 막는다. 이름은
 서버가 관리하는 owner 디렉터리의 상대 이름으로 제한하며 클라이언트의 절대
 경로를 저장하지 않는다. 환경 조합을 바꾸려면 새 Execution Environment를
-만들고 Setup을 복제한다. 패키지·dotenv 내용 수정은 다음 실행에 적용된다.
-실행마다 해석한 venv ID·Python 버전·패키지 digest와 env revision ID를
+만들고 Setup을 복제한다. 패키지 수정은 새 venv revision과 새 Environment를
+만들며 기존 Setup에 적용되지 않는다. dotenv 수정만 다음 실행에 적용된다.
+실행마다 고정 venv revision ID·Python 버전·패키지 digest와 env revision ID를
 Case Run/Evaluation의 환경 관측에 남긴다. 비밀 값이나 값의 hash는 저장하지
 않는다. 상세 파일 계약은 [runtime-environments.md](runtime-environments.md)를 따른다.
 
@@ -210,7 +211,10 @@ experiment_case
   UNIQUE(experiment_id, position)
 ```
 
-Agent Setup의 중복 exposed_name은 Tool Version과 일치 검증 후 저장한다. Experiment의 Case는 Evaluation Setup의 Dataset에 있어야 한다. 다른 테이블 조회가 필요한 membership/Golden/Rubric 검증은 application transaction으로 수행하고 일관성을 깨는 별도 쓰기 경로를 제공하지 않는다.
+Agent Setup의 중복 exposed_name은 Tool Version과 일치 검증 후 저장한다. Prompt와
+모든 Tool Version의 venv revision은 Agent Setup 환경의 revision과 같아야 한다.
+Evaluation의 Python 자산도 Evaluation Setup 환경과 같아야 한다. composite FK 또는
+Setup 생성 트랜잭션의 잠금·검증으로 교차 환경 조립을 차단한다. Experiment의 Case는 Evaluation Setup의 Dataset에 있어야 한다. 다른 테이블 조회가 필요한 membership/Golden/Rubric 검증은 application transaction으로 수행하고 일관성을 깨는 별도 쓰기 경로를 제공하지 않는다.
 
 ## Batch, Run, Case Run
 

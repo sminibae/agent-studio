@@ -25,18 +25,21 @@
   보여주지 않고 DB, Setup, Trace, 로그에 복사하지 않는다. 편집은 파일을
   원자적으로 교체하고 새 revision ID를 만든다. 과거 비밀 값은 실행 이력을
   위해 보존하지 않는다. 이미 시작한 작업은 시작 시 읽은 값을 계속 사용한다.
-- 하나의 Setup은 정확한 Execution Environment ID를 고정한다. Agent와 Judge는
-  서로 다른 환경을 선택할 수 있다. 미리보기에서는 사용자가 환경을 명시적으로
-  선택하며 실제 실행과 같은 Python·dotenv 해석 규칙을 사용한다.
-- Setup이 고정하는 것은 환경의 **선택**이다. 사용자가 패키지나 dotenv 값을
-  바꾸면 다음 실행에 새 내용이 적용된다. 실행마다 Python 버전, 설치 패키지
-  목록의 digest, dotenv 파일 revision ID를 기록한다. 비밀 값이나 비밀 값의
-  hash는 기록하지 않는다. 과거 실행 조회는 기록된 결과를 사용하며 환경을
-  다시 실행하지 않는다.
+- 하나의 Setup은 정확한 Execution Environment와 그 안의 **venv revision**을
+  고정한다. Agent와 Judge는 서로 다른 환경을 선택할 수 있다. 미리보기에서는
+  사용자가 환경을 명시적으로 선택하며 실제 실행과 같은 Python·dotenv 해석
+  규칙을 사용한다.
+- 패키지 설치·제거는 기존 venv revision을 수정하지 않고 새 revision을 만든다.
+  새 revision으로 Agent를 실행하려면 Python 자산을 그 환경에서 다시 검증하여
+  새 Version을 발행하고 Setup을 복제한다. 실행 요청에서 Setup의 환경을 다른
+  환경으로 override하지 않는다.
+- dotenv 값은 credential 회전을 위해 다음 실행부터 새 revision을 사용할 수
+  있다. 실행마다 Python 버전, 고정된 패키지 목록 digest와 실제 dotenv revision
+  ID를 기록한다. 비밀 값이나 비밀 값의 hash는 기록하지 않는다.
 - 여러 작업이 같은 가상환경을 동시에 읽을 수 있다. 패키지 설치는 사용 중인
-  디렉터리를 직접 수정하지 않고 새 환경 revision을 준비한 뒤 선택 포인터를
-  원자적으로 바꾼다. 시작한 작업은 읽기 전용으로 고정한 revision을 끝까지
-  사용하며, 마지막 실행 예약이 정리될 때까지 해당 revision을 보존한다.
+  디렉터리를 직접 수정하지 않고 새 venv revision을 준비한다. Setup이 참조하는
+  revision은 자동으로 바뀌지 않는다. 시작한 작업은 읽기 전용 revision을 끝까지
+  사용하며, 해당 revision을 참조하는 Setup과 실행 이력이 있는 동안 보존한다.
 
 ## 프로세스와 신뢰 경계
 
@@ -65,13 +68,15 @@ socket에 접근하지 않는다.
 
 ## 생명주기와 검증
 
-환경 생성·패키지 설치·dotenv 편집은 owner 인증을 요구한다. 이미 선택된 환경을
-삭제하면 과거 실행은 조회할 수 있지만 새 실행은 `environment_unavailable`로
-거부한다. 실행 등록 또는 시작 전에 Python 실행 파일, SDK·도구 의존성, 필요한
+환경 생성·패키지 설치·dotenv 편집은 owner 인증을 요구한다. 이미 선택된 환경은
+보관할 수 있지만 Setup이나 실행 이력이 참조하는 venv revision을 물리 삭제하지
+않는다. 사용할 수 없게 된 환경의 새 실행은 `environment_unavailable`로 거부한다.
+실행 등록 또는 시작 전에 Python 실행 파일, SDK·도구 의존성, 필요한
 키의 존재 여부를 검사한다. 키 값 자체를 검증 오류에 넣지 않는다.
 
 구현 전 spike에서는 사용자 지정 이름 두 개의 독립성, 패키지 설치와 선택한
-가상환경에서의 import, dotenv 교체 후 다음 실행에만 적용되는 동작, Agent와
-Judge의 별도 환경, 다른 owner 경로/비밀 차단, 자식 프로세스 종료를 검증한다.
+가상환경에서의 import, venv 수정 시 새 revision과 Setup 복제가 필요한 동작,
+dotenv 교체 후 다음 실행에만 적용되는 동작, Agent와 Judge의 별도 환경, 다른
+owner 경로/비밀 차단, 자식 프로세스 종료를 검증한다.
 실행 프로세스에서 SDK를 사용할 수 있도록 필요한 버전의 SDK/runner 패키지를
 각 가상환경에 설치·검사하는 절차도 검증한다.

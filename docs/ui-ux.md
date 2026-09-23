@@ -22,10 +22,18 @@
 - 자산 변경은 새 Version 생성임을 표시하고, 지금 만드는 Setup에 새 Version을 선택할지 보여준다. 이미 저장한 Setup은 자동으로 따라 바뀌지 않는다.
 - 자산 내용은 `.py` 코드 편집기를 중심으로 작성한다. 상단에 `system_prompt: str`, `items: list[dict]` 등 읽어 갈 변수·필수 항목을 안내한다. 함수·조건문·반복문을 지원하고 실제 실행 시 값을 계산한다. 저장 버튼으로 새 Version을 발행하며 Git commit은 서비스가 처리한다. 원문과 버전 간 차이는 DB Version이 참조한 commit에서 읽는다. 미리보기·오류 줄 표시와 원문/실제 결과의 구분은 [python-assets.md](python-assets.md)를 따른다.
 - 미저장 폼은 브라우저 상태의 draft다. DB의 불변 Setup에 부분 저장하지 않는다. 페이지 이탈 시 작성 내용 유실을 안내한다.
-- Tool 목록은 배포된 Python 함수에서 등록된다. 화면에서는 선택·설명 변경·버전 확인을 제공한다. 자산 Python 편집과 도구 함수 구현 자체의 웹 편집은 구분하며, 후자의 범위는 [python-assets.md](python-assets.md)의 미결 사항이다.
+- Tool은 사용자가 `.py` 편집기에서 자유롭게 작성한다. 화면 상단에 지정 변수
+  `tool`과 함수 타입·입출력 schema 규칙을 안내하고, 미리보기에서 선택 환경으로
+  import·schema 추출을 검증한다. 저장하면 원문과 검증 결과를 새 Tool Version으로
+  발행한다.
 - Dataset은 Case를 만들고 편집하며 목록에서 선택해 Version을 발행한다. 입력 버전과 Golden 대응 상태를 눈에 보이게 한다.
 
 Setup 저장 전 구성 요약에서 Prompt/Tool/Model/평가 조건의 Version을 확인한다. 복제는 새 이름과 바꿀 항목으로 바로 진입한다. 기존 Setup과 달라진 항목을 표시한다. API key는 이 화면에 입력·출력하지 않는다.
+
+Setup 작성 시 Execution Environment의 정확한 venv revision을 고정한다. 자산
+선택기에는 같은 revision에서 검증된 Version만 표시한다. 실행 화면에서는 환경을
+바꿀 수 없고 다른 환경을 쓰려면 Setup 복제로 안내한다. 비교 선택기에서는 venv
+revision이 다른 실행을 함께 선택할 수 없으며 그 이유를 표시한다.
 
 ### Experiments와 실행 이력
 

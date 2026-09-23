@@ -40,7 +40,9 @@ Definition → Definition Version → Agent Setup ──────┐
 
 각 사용자는 자기 자산·Setup·실행·분석만 접근한다. 첫 배포 사용자가 한 명이어도 이 경계를 구현한다. 모든 개인 데이터에는 owner가 있고 서로 다른 owner의 Version/Setup/Run을 연결할 수 없다. 사용자 간 공유와 역할별 권한은 첫 범위가 아니다.
 
-배포된 도구 구현 catalog는 읽기 전용 시스템 자원이며 각 사용자의 Tool Definition/Version과 구별한다. 인증 신원은 `(issuer, subject)`로 식별하고 email을 소유자 ID로 사용하지 않는다. 실제 접근 계약은 [operations.md](operations.md)를 따른다.
+Tool Definition/Version은 사용자가 Python 편집기에서 작성한 개인 자산이다. 인증
+신원은 `(issuer, subject)`로 식별하고 email을 소유자 ID로 사용하지 않는다. 실제
+접근 계약은 [operations.md](operations.md)를 따른다.
 
 ## 자산
 
@@ -53,7 +55,7 @@ Python 자산에서 Version은 저장소 ID·commit ID·파일 경로로 식별�
 | 종류 | Version에 고정하는 내용 |
 | --- | --- |
 | Prompt | 본문, 명시적 변수와 입력 계약 |
-| Tool | 모델에 노출할 이름·설명·입력 스키마, 실행 계약과 구현 버전 참조 |
+| Tool | Python 원문, 지정 변수 `tool`, 모델에 노출할 이름·설명·검증된 입출력 스키마 |
 | Model Config | provider, model ID, 요청 파라미터; 비밀 값 제외 |
 | Test Case | Agent 입력과 메타데이터 |
 | Dataset | 순서 있는 Test Case Version 집합 |
@@ -76,6 +78,10 @@ Model Config·Golden Set·Scoring Rule을 포함한 위 종류는 독립 편집�
 ### Agent Setup
 
 Agent Prompt Version, Model Config Version, 순서 있는 Tool Version 목록, Agent Runtime Parameters와 사용자 Execution Environment 참조를 묶은 불변 실행 구성이다.
+
+Prompt와 Tool을 포함해 Setup에 연결하는 모든 실행 Python 자산은 Setup이 고정한
+venv revision에서 발행·검증된 Version이어야 한다. 다른 환경에서 실행하려면
+자산을 대상 환경에서 새 Version으로 발행하고 Setup을 복제한다.
 
 Runtime Parameters는 `max_turns`, 실행 timeout 등 Agent 제어값이며 모델 sampling parameter와 구분한다. 같은 Tool 이름을 두 번 노출할 수 없다. Tool Description만 바꿔도 새 Tool Version과 새 Setup이 된다.
 

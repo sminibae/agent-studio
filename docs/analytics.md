@@ -25,6 +25,13 @@ Scope는 모든 분석 탭에 유지한다. 반복이 1이면 표준편차를 0�
 
 ## 비교 가능성
 
+비교 범위의 모든 Agent Setup은 같은 venv revision을 사용해야 한다. Evaluation
+Setup의 venv revision도 같아야 한다. 하나라도 다르면 비교 API는
+`422 environment_mismatch`로 거부하고 UI 선택기에서도 함께 선택할 수 없게
+한다. 환경별 결과는 각각 조회할 수 있지만 공식 비교·나란히 보기·반복 합산은
+지원하지 않는다. 같은 패키지 digest여도 서로 다른 revision의 호환성을 추론하지
+않는다.
+
 공식 Δ/Win/Loss/Regression을 계산하려면 다음을 만족해야 한다.
 
 1. **같은 Evaluation Setup ID**를 사용한다. Dataset/Golden/Judge Prompt/Judge Model/Rubric/Scoring Rule의 Version 참조와 missing Golden 정책을 고정한다. Python 평가 자산의 실제 결과가 같다는 보장은 별도로 필요하다.
@@ -41,7 +48,10 @@ Scope는 모든 분석 탭에 유지한다. 반복이 1이면 표준편차를 0�
 
 현재 범위에 실패가 많다는 이유로 실패한 Run/Case를 자동 제외하지 않는다. 사용자가 범위를 줄이면 그 범위를 결과에 그대로 표시한다. `repeat_index`가 같다고 난수나 외부 환경이 통제된 paired observation이라고 주장하지 않는다.
 
-비교 조건을 만족하더라도 코드/runtime artifact, 사용자 가상환경의 패키지 digest, dotenv revision, 실행 정책, 실행 시각이나 실제 도구 응답이 다르면 환경 차이로 표시한다. dotenv 값은 분석에 노출하지 않는다. 공식 비교는 정의된 범위의 기술 통계이며 Agent 변경만이 원인이라는 인과관계나 통계적 유의성을 보장하지 않는다.
+비교 조건을 만족하더라도 코드/runtime artifact, dotenv revision, 실행 정책,
+실행 시각이나 실제 도구 응답이 다르면 조건 차이로 표시한다. dotenv 값은 분석에
+노출하지 않는다. 공식 비교는 정의된 범위의 기술 통계이며 Agent 변경만이
+원인이라는 인과관계나 통계적 유의성을 보장하지 않는다.
 
 ## 채점 계약
 

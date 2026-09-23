@@ -5,10 +5,10 @@
 ## 실행 범위
 
 - 플랫폼에서 Prompt·Model·Tool을 조합해 실행한다.
-- 도구는 개발자가 Python 함수와 decorator로 작성한다.
+- 도구는 각 사용자가 웹 Python 편집기에서 함수와 decorator로 자유롭게 작성한다.
 - 첫 provider는 OpenAI, 첫 도구는 날씨 조회 HTTP API다.
 - 후속 목표는 `.py` export다. 첫 버전에는 코드 생성 기능을 만들지 않는다.
-- 자산은 웹 Python 편집기로 작성하고 실행 시 약속된 변수 값을 읽는다. 원문은 서버의 일반 폴더와 Git 저장소에 보관한다. 이는 아래 배포 도구 registry와 구별되는 [Python 자산 계약](python-assets.md)이다.
+- 자산은 웹 Python 편집기로 작성하고 실행 시 약속된 변수 값을 읽는다. 원문은 서버의 일반 폴더와 Git 저장소에 보관한다. Prompt와 Tool 모두 [Python 자산 계약](python-assets.md)에 따라 사용자별로 버전 관리한다.
 
 ## function_tool 방식
 
@@ -22,21 +22,31 @@ async def get_current_weather(latitude: float, longitude: float) -> str:
     """지정한 좌표의 현재 날씨를 단위·조회 시각과 함께 반환한다."""
     # 구현 시 고정된 날씨 HTTP endpoint를 호출하고 검증한 JSON을 반환한다.
     ...
+
+tool = get_current_weather
 ```
 
-decorator가 붙었다는 사실만으로 우리 DB에 등록되는 것은 아니다. 배포 manifest에 허용 모듈을 명시하고 importer가 그 안의 도구를 읽어 등록한다. import 경로·DB 등록·구현 artifact를 제품의 adapter가 연결한다. 도구 registry는 화면의 임의 모듈 경로를 import하지 않는다. 사용자 작성 Python 자산은 Version이 참조한 Git commit의 파일을 읽어 격리된 실행 adapter로 처리한다.
+파일 실행 뒤 전역 변수 `tool`에 담긴 객체만 제품으로 가져온다. 이름이 없거나
+두 개 이상의 Tool을 우회해 노출하거나 지원 타입이 아니면 발행을 거부한다.
+adapter는 함수 signature·type annotation·docstring에서 모델에 제공할 schema를
+추출하고 직렬화 가능한 snapshot으로 저장한다. 사용자는 함수 본문과 필요한
+패키지를 자유롭게 작성할 수 있지만, 다른 owner 파일이나 서비스 credential에
+접근할 권한을 얻는 것은 아니다.
 
 ## 세 가지 계약
 
 | 계약 | 내용 | 누가 변경하는가 |
 | --- | --- | --- |
-| Python 구현 | 함수·입출력 타입·실제 HTTP 호출·의존성 | 개발자가 코드 배포 |
-| Tool Version | 모델에 보이는 이름/설명, 검증된 입력 schema, 구현 ID | 사용자가 화면에서 새 Version 생성 |
-| Agent Setup | 정확한 Tool Version 목록과 순서, Prompt/Model/Runtime | 사용자가 복제 후 새 Setup 생성 |
+| Python 원문 | 함수 본문·입출력 타입·실제 호출·`tool` 변수 | 사용자가 새 Version 발행 |
+| Tool Version | Git 원문 참조, 고정 venv revision, 검증된 schema와 설명 | 사용자가 화면에서 새 Version 발행 |
+| Agent Setup | 정확한 Tool Version 목록과 순서, Prompt/Model/Runtime/환경 | 사용자가 복제 후 새 Setup 생성 |
 
-Importer는 명시적 `registry_key`, 배포 artifact digest, entrypoint, 생성된 스키마를 검증한다. SDK 객체는 adapter 안에서 다루고 Domain/DB에는 serializable 계약을 저장한다. 도구 구현은 trusted 배포 코드이며 registry 자체가 사용자 Python의 격리를 제공하지는 않는다. 자산 실행의 격리는 별도 책임이다.
-
-화면에서 Description을 바꾸면 새 Tool Version을 만든다. 함수 인자 schema는 구현과 묶여 있어 화면에서 자유 편집하지 않는다. 실행 시 저장된 설명을 사용한 별도 SDK tool 객체를 조립하고 전역 decorator 객체를 수정하지 않는다. 사용자/Setup 간 설명이 섞이지 않아야 한다.
+발행 검증기는 Version이 고정한 Git commit의 파일을 선택한 venv revision에서
+실행하고 `tool` 객체와 생성된 schema를 검사한다. SDK 객체 자체는 DB에 저장하지
+않는다. 화면에서 Description이나 함수 signature·본문을 바꾸면 새 Tool Version을
+만든다. 실행 때 원문을 다시 읽어 격리 프로세스에서 객체를 만들고 저장된 schema와
+일치하는지 확인한다. 전역 decorator 객체를 여러 사용자나 Setup 사이에 공유하지
+않는다.
 
 ## 실행 adapter
 
@@ -80,7 +90,7 @@ HTTP 공급자 기본 후보는 Open-Meteo다. 좌표에 대한 current temperat
 
 이것은 문서 정비에서 실제로 실행한 검증이 아니다. 골격 직후 실제 SDK 버전을 고정하여 아래를 확인한 뒤 본 실행기를 구현한다.
 
-1. typed Python 함수 → schema 추출 → registry import → Tool Version 저장/복원.
+1. 사용자 `.py` → 지정 변수 `tool` 추출 → schema 검증 → Tool Version 저장/복원.
 2. 같은 함수에 서로 다른 Description을 적용한 두 Setup을 동시에 실행해 격리 확인.
 3. unknown tool, invalid args, tool exception, turn limit의 SDK 기본 동작과 제품 정책을 일치시킴.
 4. SDK retry/parallel tool 설정을 제어하고 개별 시도 Trace·사용량을 기록.
@@ -92,7 +102,7 @@ HTTP 공급자 기본 후보는 Open-Meteo다. 좌표에 대한 current temperat
 
 ## Python export를 위한 현재 경계
 
-Setup manifest는 자산 Version·저장소 ID·commit ID·파일 경로·원문 SHA-256·결과 계약, Tool Version·implementation 참조, 사용자 Execution Environment 참조, runtime 정책과 schema version을 직렬화할 수 있어야 한다. 실행할 때 불변 참조를 해석하고 Python 자산을 평가한 실제 Prompt/설정으로 ExecutionSpec을 조립한다. 같은 원문 Version의 동적 결과는 실행마다 달라질 수 있다.
+Setup manifest는 자산 Version·저장소 ID·commit ID·파일 경로·원문 SHA-256·결과 계약, Tool Version·schema snapshot, 고정 venv revision과 dotenv 참조, runtime 정책과 schema version을 직렬화할 수 있어야 한다. 실행할 때 불변 참조를 해석하고 Python 자산을 평가한 실제 Prompt/Tool/설정으로 ExecutionSpec을 조립한다. 같은 원문 Version의 동적 결과는 실행마다 달라질 수 있다.
 
 export 시 미래에 필요한 것은 manifest, Python 자산 원문과 실행 시 평가 계약, Python 도구 코드/의존성, runtime 조립 코드, 사용자 가상환경 재생성 및 dotenv 변수 안내다. 미리 계산한 Prompt만 내보내 동적 의미를 잃지 않아야 한다. API key·사용자 비밀은 export하지 않는다. 함수 closure·서버 전역 DB 접근처럼 외부로 옮길 수 없는 의존성은 도구 등록 계약에서 드러나야 한다.
 

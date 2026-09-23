@@ -6,7 +6,7 @@
 
 **Agent를 측정 근거로 개선한다.** Prompt·Model·Tool을 바꾼 뒤 같은 평가 조건으로 실행하고, 평균뿐 아니라 Case별 퇴행·실패·반복 변동과 Trace를 확인할 수 있게 한다.
 
-사용자는 서버에 접속하는 개발자 본인과 소수 팀원이다. 플랫폼 안에서 Agent를 조합하고 직접 실행한다. 개발자는 Python 함수로 도구를 제공하고 화면에서 자산·Setup·실험을 관리한다. 첫 모델 provider는 OpenAI다. 데이터는 사용자별로 분리하고 첫 배포에는 한 사용자만 허용한다.
+사용자는 서버에 접속하는 개발자 본인과 소수 팀원이다. 플랫폼 안에서 Agent를 조합하고 직접 실행한다. 각 사용자는 Python 편집기에서 Tool 함수를 자유롭게 작성하고 화면에서 자산·Setup·실험을 관리한다. 첫 모델 provider는 OpenAI다. 데이터는 사용자별로 분리하고 첫 배포에는 한 사용자만 허용한다.
 각 사용자는 개발 서버의 고정 `.venv`·`.env`와 별도로 자신이 이름 붙인 가상환경과 dotenv 파일을 관리하고 Setup에서 선택한다. 계약은 [사용자 실행 환경](runtime-environments.md)을 따른다.
 
 자산 내용은 Python 코드 편집기로 작성하고 화면 상단에 결과 변수·타입을 안내한다. 원문을 서버의 일반 폴더에 저장하고 Git으로 형상관리하며, 실제 Agent 실행 시 값을 계산한다. 사용자 경험과 미결 실행 계약은 [python-assets.md](python-assets.md)를 따른다.
@@ -17,7 +17,9 @@
 
 날씨 조회 HTTP API를 사용하는 Agent로 한 사이클을 완주한다.
 
-1. 개발자가 날씨 조회 Python 함수를 등록하고 배포한다. 함수는 명시적인 타입과 설명, HTTP timeout과 출력 계약을 가진다.
+1. 사용자가 선택한 환경의 Python 편집기에서 날씨 조회 함수를 작성하고 지정 변수
+   `tool`에 담아 Version을 발행한다. 함수는 명시적인 타입과 설명, HTTP timeout과
+   출력 계약을 가진다.
 2. 사용자가 Agent Prompt·OpenAI 모델·날씨 도구로 Agent Setup A를 만든다.
 3. Test Case, Dataset, Golden, Judge Prompt/Model, Rubric, Scoring Rule로 Evaluation Setup을 만든다.
 4. A의 Experiment를 생성하고 반복 실행한다. 진행과 Agent Trace·평가 결과를 확인한다.
@@ -32,8 +34,8 @@
 | --- | --- |
 | 접근 | 브라우저 로그인, 허용된 팀원만 서버 접근; 개인 데이터 격리, 첫 배포 계정 1명 |
 | 자산 | Definition 종류별 생성·새 Version 발행·이력 조회·보관, Dataset Case 편집 |
-| 실행 환경 | 사용자별 가상환경·dotenv 생성/선택, 패키지·credential 관리, 실행 환경 확인 |
-| Agent Setup | Prompt/Model/등록 Tool/Runtime 선택, 생성·목록·상세·복제·보관 |
+| 실행 환경 | 사용자별 가상환경·dotenv 생성, 불변 venv revision을 Setup에 고정, 패키지·credential 관리 |
+| Agent Setup | Prompt/Model/사용자 작성 Tool/Runtime/환경 선택, 생성·목록·상세·복제·보관 |
 | Evaluation Setup | Dataset/Golden/Judge/Rubric/Scoring 구성, 정합성 검증·복제·보관 |
 | Experiment | 고정 구성 생성·복제, Case 범위와 Repeats 선택 |
 | 실행 | 멱등 Batch 생성, Run/Case 진행, 취소, worker 중단 복구 |

@@ -150,12 +150,16 @@ OpenAPI에서 TypeScript 타입/클라이언트를 생성하는 것을 기본안
 
 ## 모델·도구 경계
 
-Application 소유 port의 예는 `AgentRuntime`, Judge용 `ModelGateway`, `UnitOfWork`, `AnalysisReader`다. SDK 내부에서 끝나는 도구 왕복을 application에 중복 구현하지 않으며 registry/도구 실행 계약은 runtime adapter 안에서 연결한다. 구체 메서드는 실제 유스케이스 테스트에서 필요한 계약으로 정한다.
+Application 소유 port의 예는 `AgentRuntime`, Judge용 `ModelGateway`, `UnitOfWork`, `AnalysisReader`다. SDK 내부에서 끝나는 도구 왕복을 application에 중복 구현하지 않으며 사용자 Tool 원문 로딩·객체 검증·격리 호출 계약은 runtime adapter 안에서 연결한다. 구체 메서드는 실제 유스케이스 테스트에서 필요한 계약으로 정한다.
 worker는 사용자 환경 ID를 해석해 선택한 `.venv`의 Python으로 실행 프로세스를 시작한다. 선택한 `.env`만 그 프로세스에 주입하고 서비스 설정·DB credential은 전달하지 않는다. API와 worker 자신의 Python 환경은 바뀌지 않는다.
 
 모델 adapter는 provider 응답을 명시적인 메시지·도구 호출·사용량·오류 타입으로 변환한다. Agent와 Judge는 transport를 공유할 수 있지만 prompt 생성·결과 검증·상태 전이는 별도 책임이다. SDK 자동 retry는 끄거나 한 층으로 통합하여 실제 시도 수를 추적한다.
 
-도구 구현 참조는 이름만으로 충분하지 않다. 구현 버전·실행 대상·입출력 스키마·timeout·비밀 참조·외부 데이터 의존성을 기록할 계약이 필요하다. 개발자가 작성한 decorator 기반 Python 함수를 등록하고 첫 함수가 날씨 HTTP API를 호출한다. 구체 계약과 export 대비는 [agent-runtime.md](agent-runtime.md)에 있다.
+도구 구현 참조는 이름만으로 충분하지 않다. 사용자 Tool Version의 Git 원문,
+고정 venv revision, 입출력 스키마·timeout·비밀 참조·외부 데이터 의존성을 기록할
+계약이 필요하다. 사용자가 작성한 decorator 기반 Python 함수의 `tool` 변수를
+읽으며 첫 함수가 날씨 HTTP API를 호출한다. 구체 계약과 export 대비는
+[agent-runtime.md](agent-runtime.md)에 있다.
 
 ## 인증과 소유권 경계
 
