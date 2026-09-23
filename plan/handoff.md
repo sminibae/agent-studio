@@ -1,83 +1,113 @@
-# 다음 작업 인계 — 2026-09-16
+# 구현 재개 인계
 
-## 어디서 다시 시작할지
+기준: 2026-09-23, 로컬 `dev` / `a1b9ef8` 확인. 이번 정리는 문서 작업이며
+제품 코드는 변경하지 않았다. 다음 구현은 **[02 실행 기술 검증](02_runtime_spikes.md)의
+02-1: 컨테이너 안의 선택 사용자 venv에서 SDK와 사용자 Tool 실행**이다.
 
-- 코드 작업 브랜치: `feat/user-runtime-spikes`. 내일 이 브랜치에서 이어서 작업한다.
-  `dev`에는 실행 환경 설계와 동시 실행 스케줄링 설계가 각각 `--no-ff`로 병합돼
-  있다. 코드 spike는 아직 `dev`에 병합하지 않았다.
-- 01 프로젝트 골격은 완료됐다. 현재 02 실행 기술 검증은 **진행 중**이다.
-  관찰표와 재현 내용은 [02 실행 기술 검증](02_runtime_spikes.md)에 있다.
-- 사용자별 `.venv`·`.env`는 개발용 `backend/.venv`·루트 `.env`와 별개다.
-  Agent/Judge Setup이 사용자 Execution Environment를 선택하는 설계다.
-  [사용자 실행 환경](../docs/runtime-environments.md)을 따른다.
-- 여러 실험·사용자의 동시 실행 정책은 [실행 대기열과 자원 배분](../docs/scheduling.md)에
-  정했다. 전체 4개·owner별 2개 실행 예약, 미종료 작업 owner별 5,000개·전체
-  20,000개, owner 순환 점유, 컨테이너 정리 전 슬롯 보유가 **설계값**이다.
-  큐·worker·예약 테이블은 아직 구현되지 않았다. 2 vCPU/4 GiB에서 4개 동시
-  실행이 가능한지도 부하 시험 전에는 확정할 수 없다.
+## 어디까지 했나
 
-## 지금까지 검증한 것
+| 영역 | 실제 상태와 근거 |
+| --- | --- |
+| 프로젝트 골격 | 완료. FastAPI health/me, 신뢰 proxy identity·owner provisioning, PostgreSQL migration, Next.js shell·생성 API client, Makefile/CI |
+| 제품 DB/API | 아직 미구현. migration은 `app_user` 하나이며 API는 health/identity router만 등록 |
+| 제품 화면 | Setups/Experiments/Analytics는 placeholder. 편집·실행·비교 화면은 아직 없음 |
+| SDK spike | `openai-agents==0.22.2` 고정. fake model의 schema/description 격리·오류/retry/parallel/cancel/로컬 hook 검증 코드 존재 |
+| 사용자 환경 spike | host subprocess prototype과 제한된 Linux container Prompt smoke 존재. 컨테이너 SDK/사용자 Tool·전체 격리 검증은 남음 |
+| 최근 설계 | 사용자 Python Tool 계약, Setup의 venv revision 고정, 다중 사용자 운영·공정 스케줄링은 문서에 반영. 제품 구현은 미착수 |
 
-- `openai-agents==0.22.2`를 lockfile에 고정했다. fake model 테스트로 typed tool
-  schema, 서로 다른 Description의 동시 격리, unknown/invalid tool·예외·turn 한도,
-  명시적 retry 정책과 시도 수, provider/local 도구 병렬 제한, async 취소 중
-  heartbeat, tracing OFF 상태의 로컬 hook, 가짜 날씨 도구를 관찰했다.
-  JSON tool manifest의 허용 factory 등록·복원도 prototype으로 확인했다.
-- `backend/src/agent_studio/spikes/user_environment.py`와 테스트는 사용자가
-  이름 붙인 venv Python·dotenv 선택, 선택 패키지 import, 다음 실행의 dotenv
-  교체 반영, timeout·출력 상한·타입 오류를 확인한다. **이 host subprocess는 다른
-  사용자/호스트 파일을 읽을 수 있음이 테스트로 드러났으므로 제품 실행기에
-  연결하면 안 된다.** 서비스 환경 변수를 자식에 주지 않는 것만으로 파일 격리는
-  이루어지지 않는다.
-- `bash backend/spikes/container_environment_smoke.sh`는 macOS Docker Desktop에서
-  제한된 Linux 컨테이너 안의 이름 지정 venv로 가짜 dotenv를 읽는 Prompt를
-  실행했다. 다른 owner 파일·`.git`·서비스 DB 환경 변수의 미전달 및
-  `--network none` 외부 연결 실패를 작은 smoke로 확인했다. 실제 SDK를 그
-  컨테이너에서 실행하거나 전체 격리를 증명한 결과는 아니다.
-- 마지막 코드 변경 후 `make check` 통과: backend 테스트 32개, frontend 테스트
-  4개와 lint·typecheck·OpenAPI drift·build. 컨테이너 smoke도 통과했다.
-  그 뒤 변경은 문서뿐이며 링크 존재와 `git diff --check`를 확인했다.
+기존 인계의 “`feat/user-runtime-spikes`에서 계속, 아직 dev 미병합”은 이제 해당하지
+않는다. `0d624a8`에서 spike가, `eaa1351`에서 Tool/환경 설계가,
+`a1b9ef8`에서 다중 사용자 운영 설계가 `dev`에 병합됐다. 원격 fetch는 이번에
+수행하지 않았으므로 원격의 최신 상태까지 확인한 것은 아니다.
 
-## 내일 먼저 할 일
+## 코드와 문서 진입점
 
-1. `git status --short --branch`와 [02 계획](02_runtime_spikes.md)을 확인한다.
-   코드 변경 전 필요하면 `make install`로 잠긴 의존성을 복원한다.
-2. host subprocess를 제품 경계로 확장하지 말고, 제한된 컨테이너에서 **선택한
-   사용자 venv의 SDK/runner와 Prompt**를 실행하는 최소 adapter를 검증한다.
-   venv는 Linux 환경에서 만들고 읽기 전용 revision으로 고정한다. 사용자 dotenv만
-   전달하고 개발용 `.env`·DB credential·Docker socket·다른 owner 파일은 빼야 한다.
-3. timeout, 메모리·PID·출력 상한, 강제 취소 뒤 자식 프로세스/컨테이너 정리,
-   정리 실패 시 슬롯 보유를 공격 테스트한다. Agent 모델 호출에 필요한 네트워크는
-   허용 대상만 통과시키는 경로를 별도로 검증한다. `--network none` smoke만으로
-   실제 SDK 호출 가능성을 주장하지 않는다. macOS뿐 아니라 Linux/CI에서도
-   재현한다.
-4. 02의 남은 SDK 항목인 제품 상태·Trace/usage 영속 매핑, 실패 attempt 기록,
-   deadline·블로킹 sync 도구, 실제 HTTP weather adapter를 검증한다. 실제
-   PostgreSQL·worker 경계를 건드릴 때 `make test-integration`을 실행한다.
-   02 종료 조건을 충족한 후에만 [03 자산과 Setup](00_start.md)의 첫 Prompt
-   Definition/Version 수직 기능으로 이동한다.
+- [API 조립](../backend/src/agent_studio/bootstrap/api.py),
+  [최초 migration](../backend/migrations/versions/20260915_01_create_app_user.py)
+- [SDK 검증](../backend/tests/test_sdk_spike.py),
+  [registry prototype](../backend/src/agent_studio/spikes/sdk_registry.py)
+- [환경 prototype](../backend/src/agent_studio/spikes/user_environment.py),
+  [환경 테스트](../backend/tests/test_user_environment_spike.py),
+  [container smoke](../backend/spikes/container_environment_smoke.sh)
+- [설계 요약](../docs/decisions.md) → [runtime](../docs/agent-runtime.md) →
+  [사용자 환경](../docs/runtime-environments.md) → [실행](../docs/execution.md) /
+  [스케줄링](../docs/scheduling.md)
+- 모든 후속 계획과 의존성은 [00_start.md](00_start.md)에 정리했다.
 
-## 남은 위험과 필요한 입력
+## 다음 구현 세션에서 할 일
 
-- 사용자 Python이 선택한 **자기 dotenv** 값을 읽는 것은 의도한 계약이다. 다른
-  owner·서비스 비밀을 읽지 못하게 하는 컨테이너 mount/권한/네트워크 격리와
-  출력 비밀 제거는 아직 제품 수준으로 검증되지 않았다.
-- 사용자 환경 패키지 설치의 새 revision 교체, 선택 venv 안의 SDK 버전 검증,
-  Agent/Judge별 환경, container orphan 복구, 동시 owner별 공정 점유는 설계만 있다.
-  [실행 대기열과 자원 배분](../docs/scheduling.md) 및
-  [실행 계약](../docs/execution.md)을 구현 시 기준으로 삼는다.
-- 실제 OpenAI live smoke에는 사용자가 선택한 dotenv의 유효한 credential과
-  사용 가능한 model ID가 필요하다. fake/컨테이너 검증은 이 입력 없이 진행할 수
-  있다. 비밀을 Git·Trace·로그에 넣지 않는다.
-- 제품 API/worker, 실제 로그인 프록시, 자산/Setup, 평가/분석은 아직 구현 전이다.
-  현재 spike 통과를 이 기능들의 완료로 표시하지 않는다.
+1. `git status --short --branch`로 시작 위치와 사용자 변경을 확인한다. 현재 인계는
+   `dev` 기준이며 구현은 필요하면 여기서 기능 브랜치를 만든다. 과거 spike 브랜치로
+   돌아갈 필요는 없다. 의존성이 없거나 달라졌으면 `make install`로 lockfile을 복원한다.
+2. 02 계획의 관찰표와 최신 Tool 계약을 읽는다. 첫 작업의 실패 테스트는
+   **선택한 Linux venv에 SDK/runner가 없으면 명시적 오류로 종료**하는 사례로 잡는다.
+3. 최소 컨테이너 하네스에서 읽기 전용 venv, 선택한 가짜 dotenv, 실행할 자산 파일만
+   전달한다. 사용자 `.py`의 `tool`을 추출하고 fake model로 호출해 Final Answer와
+   로컬 이벤트를 받는다. API key나 live 네트워크 없이 재현 가능하게 만든다.
+4. Prompt의 Case Run별 재계산/호출 retry 중 값 유지, schema mismatch,
+   다른 owner 접근·강제 종료·출력 상한 테스트를 순서대로 추가한다.
+   SDK/도구 결과를 제품 상태·이벤트 DTO로 매핑하되 아직 없는 제품 DB 전체를
+   한 번에 만들지 않는다. 세부 남은 작업은 02-2~02-5를 따른다.
+5. 변경 경계에 맞는 검증을 실행하고 02 관찰표에 통과/실패/미실행과 명령을 남긴다.
+   02의 하네스 합격 뒤 [03 자산과 Setup](03_assets_and_setups.md)의 사용자 환경
+   관리 → 첫 Prompt Definition/Version 수직 기능으로 이동한다.
 
-## 작업 방식
+첫 변경의 완료 기준은 **실제 SDK가 선택 venv 안에서 fake Tool을 실행하고,
+SDK 누락·schema 오류를 분류하며, 종료 후 컨테이너가 남지 않는 재현 명령**이다.
+이 한 변경만으로 02 전체 완료나 다중 사용자 격리 완료를 선언하지 않는다.
 
-- 기능별 작은 커밋을 유지한다. 설계 전용 브랜치는 `--no-ff`로 `dev`에 병합했고,
-  코드 spike는 별도 브랜치에 둔다. squash하지 않는다.
-- 규칙은 실패 테스트 → 최소 구현 → 정리 순서로 개발한다. 코드 변경 뒤
-  `make check`; DB 경계 변경 시 `make test-integration`; 프런트/API/DB 전체
-  경계 변경 시 `make test-e2e`를 사용한다. 외부 LLM 호출은 기본 CI에 넣지 않는다.
-- 다음 코드 작업에서 새로 확인한 사실과 미검증 항목을
-  [02 실행 기술 검증](02_runtime_spikes.md)에 계속 기록한다.
+## 구현 중 유지할 결정
+
+- 첫 완성본부터 복수 allowlist 계정의 동시 사용을 지원한다. 모든 제품 조회·연결·
+  실행·Trace·분석은 owner 범위를 적용하고 실제 DB composite FK로 교차 연결을 막는다.
+- Tool은 사용자가 작성하는 Python 자산이다. 기존 factory registry spike를 제품의
+  사용자 함수 허용 목록으로 굳히지 않는다. `tool` 객체 추출·schema snapshot·
+  고정 원문 재실행이 제품 계약이다.
+- 서비스 `backend/.venv`·루트 `.env`와 사용자 환경을 분리한다. Setup은 venv
+  revision을 고정하며 패키지 변경은 새 revision/Version/Setup으로 이어진다.
+  dotenv는 다음 실행부터 교체 가능하고 값이나 값의 hash를 실행 기록에 저장하지 않는다.
+- **host subprocess prototype은 다른 호스트 파일을 읽을 수 있다. 제품 API/worker에
+  연결하지 않는다.** 현재 `--network none` Prompt smoke는 SDK/도구 네트워크나
+  자원·취소·전체 격리의 합격 증거가 아니다.
+- 큐는 PostgreSQL 기반이다. 전체 4/owner별 2 Agent·Judge 합산 실행 예약,
+  미종료 작업 owner별 5,000/전체 20,000, owner 순환 점유와 정리 전 슬롯 보유는
+  설계 기본값이다. worker/예약 테이블은 아직 없고 서버 용량은 부하 검증 전이다.
+- Python 원문은 사용자별 별도 Git 저장소, Version은 commit/path/hash와 보존 ref를
+  사용한다. Git+DB 실패 복구를 구현하며 현재 작업 폴더를 과거 실행의 기준으로 쓰지 않는다.
+- 동적 평가 조건은 실제 생성값과 입력으로 판단한다. 같은 Setup ID만으로 비교하지
+  않으며 다른 venv revision의 실행 비교는 `environment_mismatch`로 거부한다.
+
+## 검증 명령과 현재 증거
+
+```sh
+make install
+make check
+# PostgreSQL/worker 저장 경계를 변경했을 때
+make test-integration
+# 화면/API/DB의 사용자 흐름을 변경했을 때
+make test-e2e
+# 기존 Prompt 컨테이너 smoke — 새 SDK 하네스와 구분
+bash backend/spikes/container_environment_smoke.sh
+```
+
+Docker Desktop이 DB/컨테이너 명령 전에 실행돼 있어야 한다. 일반 로컬 기동은
+`make dev`이며 web 3000/API 8000을 사용한다. 현재 E2E는 readiness/me만 확인한다.
+향후 제품 흐름 검증은 각 단계에서 추가해야 한다.
+
+이전 2026-09-16 인계에는 `make check`(backend 32개/frontend 4개)와 macOS
+container smoke 통과가 기록돼 있다. **이번 문서 정리에서는 이를 재실행하지 않았다.**
+현재 실행 결과로 오인하지 않는다. 이번에는 코드·Git 이력·설계 대조와 계획 문서의
+상대 링크, `git diff --check`를 확인한다.
+
+## 나중에 필요한 입력과 범위
+
+- 02~04 및 fake Judge/분석은 실제 API key 없이 진행한다.
+- 05 live smoke: 사용자가 선택한 dotenv의 유효 credential, 허용 Agent model ID,
+  날씨 endpoint/네트워크 정책. 06 live Judge에는 사용 가능한 Judge model ID가 필요하다.
+- 08 배포: 서버/도메인/OIDC 앱·허용 신원/backup 위치/실제 데이터 보존·삭제 정책.
+  계정·서버가 아직 없어도 로컬 구현을 진행한다.
+- Python export, 다중 Agent, 재평가, 외부 수집, 사용자 간 공유는 첫 완성본 이후다.
+
+기능은 작은 수직 단위로 구현하고 상태·동시성·불변성 규칙은 실패 테스트부터
+고정한다. 코드 변경 뒤 관련 검증을 완료하고 계획 체크박스와 이 문서의 다음 작업을
+갱신한다. 기존 계획의 기능별 작은 커밋·병합 시 `--no-ff`/비-squash 방침을 유지한다.
